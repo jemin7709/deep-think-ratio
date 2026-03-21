@@ -1,0 +1,6 @@
+model: dummy
+model_args: {}
+batch_size: 1
+device: cpu
+apply_chat_template: false
+fewshot_as_multiturn: false
