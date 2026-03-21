@@ -1,7 +1,5 @@
 """Local YAML shim for the upstream AIME task helpers."""
 
-from typing import Dict, List
-
 from lm_eval.tasks.aime import utils as upstream_utils
 
 
@@ -15,18 +13,19 @@ remove_right_units = upstream_utils.remove_right_units
 strip_string = upstream_utils.strip_string
 
 
-def process_results(doc: dict, results: List[str]) -> Dict[str, int]:
-    target = str(doc[next(key for key in doc if key.lower() == "answer")])
-    answer = extract_answer(results[0])
-    return {"exact_match": int(is_equiv(answer, target))}
+def process_results(doc: dict, results: list[str]) -> dict[str, int]:
+    answer_key = next(key for key in doc if key.lower() == "answer")
+    return {
+        "exact_match": int(is_equiv(extract_answer(results[0]), str(doc[answer_key])))
+    }
 
 
 def extract_answer(response: str) -> str:
     answer = response
 
-    indices = [pos for pos, char in enumerate(response) if char == "$"]
-    if len(indices) > 1:
-        answer = response[indices[0] + 1 : indices[-1]]
+    dollar_positions = [pos for pos, char in enumerate(response) if char == "$"]
+    if len(dollar_positions) > 1:
+        answer = response[dollar_positions[0] + 1 : dollar_positions[-1]]
 
     boxed_answer = last_boxed_only_string(response)
     if boxed_answer is not None:

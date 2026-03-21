@@ -1,13 +1,13 @@
 tag:
   - math_word_problems
-task: aime24_sc_25
-task_alias: AIME24 self-consistency @25
+task: aime24_custom
+task_alias: AIME24 self-consistency
 dataset_path: Maxwell-Jia/AIME_2024
 output_type: generate_until
 training_split: train
 fewshot_split: train
 test_split: train
-doc_to_text: "Question: {{Problem}}\nAnswer:"
+doc_to_text: "{Problem}\nPlease reason step by step, and put your final answer within \boxed{}"
 doc_to_target: "{{Answer}}"
 process_results: !function utils.process_results
 metric_list:
@@ -20,11 +20,7 @@ generation_kwargs:
     - "</s>"
     - "<|im_end|>"
     - "<|eot_id|>"
-  do_sample: true
-  temperature: 0.6
-  top_p: 0.95
-  max_gen_toks: 32768
-repeats: 25
+repeats: 10
 num_fewshot: 0
 metadata:
   version: 0.1

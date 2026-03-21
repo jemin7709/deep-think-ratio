@@ -1,6 +1,13 @@
-model: dummy
-model_args: {}
-batch_size: 1
-device: cpu
-apply_chat_template: false
-fewshot_as_multiturn: false
+server:
+  model: dummy-model
+  host: 127.0.0.1
+  port: 8001
+harness:
+  model: local-completions
+  model_args: {}
+  batch_size: 1
+  apply_chat_template: false
+  fewshot_as_multiturn: false
+  predict_only: true
+  gen_kwargs:
+    max_gen_toks: 16
