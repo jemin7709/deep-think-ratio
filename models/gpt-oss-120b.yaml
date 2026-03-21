@@ -1,20 +1,16 @@
-server:
-  model: openai/gpt-oss-120b
-  host: 127.0.0.1
-  port: 8000
+model: vllm
+model_args:
+  pretrained: openai/gpt-oss-120b
   dtype: auto
   tensor_parallel_size: 1
   gpu_memory_utilization: 0.9
   max_model_len: 131072
-harness:
-  model: local-completions
-  model_args: {}
-  batch_size: 1
-  apply_chat_template: true
-  fewshot_as_multiturn: true
-  predict_only: true
-  gen_kwargs:
+  chat_template_args:
     reasoning_effort: medium
-    temperature: 1.0
-    top_p: 1.0
-    max_gen_toks: 131072
+batch_size: auto
+apply_chat_template: true
+predict_only: true
+gen_kwargs:
+  temperature: 1.0
+  top_p: 1.0
+  max_gen_toks: 131072

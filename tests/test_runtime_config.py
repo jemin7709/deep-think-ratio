@@ -3,22 +3,48 @@ import unittest
 from pathlib import Path
 
 from scripts.common import (
-    build_base_url,
     build_evaluator_config,
     build_run_dir,
     build_tracker_output_path,
-    build_vllm_command,
     load_model_settings,
     load_task_settings,
 )
 
 
 class RuntimeConfigTest(unittest.TestCase):
-    def test_load_model_settings_requires_new_schema(self):
+    def test_load_model_settings_rejects_removed_server_harness_schema(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "flat.yaml"
-            path.write_text("model: hf\nmodel_args: {}\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "new server/harness schema exactly"):
+            path = Path(tmpdir) / "legacy.yaml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "server:",
+                        "  model: openai/gpt-oss-120b",
+                        "harness:",
+                        "  model: local-completions",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "removed server/harness schema"):
+                load_model_settings(path)
+
+    def test_load_model_settings_requires_vllm_backend(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "hf.yaml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "model: hf",
+                        "model_args:",
+                        "  pretrained: openai/gpt-oss-120b",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "must declare model: vllm"):
                 load_model_settings(path)
 
     def test_build_run_dir_uses_task_model_seed_timestamp(self):
@@ -36,63 +62,7 @@ class RuntimeConfigTest(unittest.TestCase):
             )
             self.assertEqual(build_tracker_output_path(run_dir), run_dir / "results.json")
 
-    def test_local_chat_completions_forces_batch_size_one(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            model_path = Path(tmpdir) / "chat.yaml"
-            model_path.write_text(
-                "\n".join(
-                    [
-                        "server:",
-                        "  model: chat-model",
-                        "  host: 127.0.0.1",
-                        "  port: 9000",
-                        "  chat_template: /tmp/template.jinja",
-                        "harness:",
-                        "  model: local-chat-completions",
-                        "  batch_size: 8",
-                        "  apply_chat_template: true",
-                        "  predict_only: true",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            settings = load_model_settings(model_path)
-            self.assertEqual(settings.harness.batch_size, 1)
-            self.assertEqual(
-                build_base_url(settings.server, settings.harness.model),
-                "http://127.0.0.1:9000/v1/chat/completions",
-            )
-
-    def test_local_chat_completions_requires_chat_template(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            model_path = Path(tmpdir) / "chat.yaml"
-            model_path.write_text(
-                "\n".join(
-                    [
-                        "server:",
-                        "  model: chat-model",
-                        "harness:",
-                        "  model: local-chat-completions",
-                        "  batch_size: 1",
-                        "  apply_chat_template: true",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            with self.assertRaisesRegex(ValueError, "server.chat_template"):
-                load_model_settings(model_path)
-
-    def test_build_vllm_command_uses_server_section(self):
-        settings = load_model_settings(Path("models/gpt-oss-120b.yaml"))
-        command = build_vllm_command(settings, seed=17)
-        self.assertEqual(command[:4], ["vllm", "serve", "openai/gpt-oss-120b", "--host"])
-        self.assertIn("--tensor-parallel-size", command)
-        self.assertIn("--max-model-len", command)
-        self.assertEqual(command[command.index("--seed") + 1], "17")
-
-    def test_build_evaluator_config_uses_results_json_output(self):
+    def test_build_evaluator_config_uses_vllm_backend_and_injects_seed(self):
         task_settings = load_task_settings(Path("tasks/aime24/aime24_custom.yaml"))
         model_settings = load_model_settings(Path("models/gpt-oss-120b.yaml"))
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -104,10 +74,25 @@ class RuntimeConfigTest(unittest.TestCase):
                 seed=11,
                 limit=0.25,
             )
-            self.assertEqual(config.output_path, str(run_dir / "results.json"))
-            self.assertEqual(config.tasks, ["aime24_custom"])
-            self.assertEqual(config.model, "local-completions")
-            self.assertEqual(config.model_args["seed"], 11)
+
+        self.assertEqual(config.output_path, str(run_dir / "results.json"))
+        self.assertEqual(config.tasks, ["aime24_custom"])
+        self.assertEqual(config.model, "vllm")
+        self.assertEqual(config.model_args["pretrained"], "openai/gpt-oss-120b")
+        self.assertEqual(config.model_args["seed"], 11)
+        self.assertEqual(
+            config.model_args["chat_template_args"]["reasoning_effort"],
+            "medium",
+        )
+        self.assertEqual(config.batch_size, "auto")
+        self.assertEqual(config.metadata["seed"], 11)
+        self.assertEqual(config.metadata["model"], "vllm")
+        self.assertEqual(config.metadata["model_args"]["seed"], 11)
+        self.assertNotIn("server_seed", config.metadata)
+
+    def test_load_model_settings_leaves_batch_size_unset_when_omitted(self):
+        settings = load_model_settings(Path("models/dummy.yaml"))
+        self.assertIsNone(settings.batch_size)
 
 
 if __name__ == "__main__":

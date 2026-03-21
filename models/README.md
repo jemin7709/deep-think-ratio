@@ -1,45 +1,37 @@
 # Model Configs
 
-`models/<name>.yaml` files define two distinct layers:
+`models/<name>.yaml` files now map directly to `lm-eval`'s `vllm` backend.
 
-- `server`: how to start `vllm serve`
-- `harness`: how `lm-eval` should call the OpenAI-compatible endpoint
-
-The new schema is mandatory. Flat legacy configs are rejected.
+The old `server/harness` schema is removed. API-server based configs are rejected.
 
 Example:
 
 ```yaml
-server:
-  model: openai/gpt-oss-120b
-  host: 127.0.0.1
-  port: 8000
+model: vllm
+model_args:
+  pretrained: openai/gpt-oss-120b
   dtype: auto
   tensor_parallel_size: 1
   gpu_memory_utilization: 0.9
   max_model_len: 131072
-
-harness:
-  model: local-completions
-  model_args: {}
-  batch_size: 1
-  apply_chat_template: true
-  fewshot_as_multiturn: true
-  predict_only: true
-  gen_kwargs:
-    temperature: 1.0
-    top_p: 1.0
-    max_gen_toks: 131072
+  chat_template_args:
+    reasoning_effort: medium
+batch_size: auto
+apply_chat_template: true
+fewshot_as_multiturn: true
+predict_only: true
+gen_kwargs:
+  temperature: 1.0
+  top_p: 1.0
+  max_gen_toks: 131072
 ```
 
 Notes:
 
-- `harness.model` defaults to `local-completions`.
-- `local-chat-completions` is opt-in only.
-- `local-chat-completions` requires:
-  - `apply_chat_template: true`
-  - `batch_size: 1`
-  - `server.chat_template`
+- `model` must be `vllm`.
+- `model_args` are forwarded to `lm-eval`'s native `vllm` backend.
+- `model_args.chat_template_args.reasoning_effort` is the supported place to control GPT-OSS reasoning effort.
+- `batch_size` is optional. Omit it to defer to the installed `lm-eval` default, or set it to `auto` explicitly.
 - `task.repeats` is the only public repeat setting. Do not set `gen_kwargs.n`.
 
 Run the full workflow with:
