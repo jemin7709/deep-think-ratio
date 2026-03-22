@@ -65,7 +65,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Evaluation outputs
-results/
+results*/
 
 # Unit test / coverage reports
 htmlcov/
