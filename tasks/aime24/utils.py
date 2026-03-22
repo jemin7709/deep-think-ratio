@@ -4,17 +4,14 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from sympy import Basic, MatrixBase
 from lighteval.metrics.dynamic_metrics import MultilingualExtractiveMatchMetric
-from lighteval.metrics.metrics_sample import AvgAtN, PassAtK
+from lighteval.metrics.metrics_sample import AvgAtN, MajAtN, PassAtK
 from lighteval.metrics.utils.extractive_match_utils import (
     ExprExtractionConfig,
-    ExtractionTarget,
     LatexExtractionConfig,
     extract_target_from_pred,
     get_extraction_regexes,
 )
-from lighteval.metrics.utils.math_comparison import compare_gold_target
 from lighteval.models.model_output import ModelResponse
 from lighteval.tasks.requests import Doc
 from lighteval.utils.language import Language
@@ -23,7 +20,6 @@ from lighteval.utils.language import Language
 MATH_EXTRACTION_PRECISION = 6
 TASK_GOLD = (ExprExtractionConfig(), LatexExtractionConfig())
 TASK_PRED = (ExprExtractionConfig(), LatexExtractionConfig())
-NO_EXTRACTION_KEY = ("__NO_EXTRACTION__",)
 GPT_OSS_FINAL_MARKER = "<|channel|>final"
 GPT_OSS_MESSAGE_MARKER = "<|message|>"
 GPT_OSS_END_MARKER = "<|end|>"
@@ -31,7 +27,6 @@ GPT_OSS_REASONING_BLOCK_RE = re.compile(
     r"<\|channel\|>(?:analysis(?: to=[^<]+)?|commentary to=[^<]+)<\|message\|>.*?<\|end\|>",
     re.DOTALL,
 )
-ExtractionValue = Basic | MatrixBase | str
 
 
 def resolve_model_identity(aggregated: dict, run_dir: Path) -> str:
@@ -108,6 +103,15 @@ def build_model_response(completions: list[str]) -> ModelResponse:
 
 
 @lru_cache(maxsize=1)
+def get_generic_math_pred_extraction_regexes():
+    return get_extraction_regexes(
+        Doc(query="", choices=[""], gold_index=0),
+        TASK_PRED,
+        Language.ENGLISH,
+    )
+
+
+@lru_cache(maxsize=1)
 def make_math_matcher() -> MultilingualExtractiveMatchMetric:
     return MultilingualExtractiveMatchMetric(
         language=Language.ENGLISH,
@@ -120,44 +124,15 @@ def make_math_matcher() -> MultilingualExtractiveMatchMetric:
     )
 
 
-@lru_cache(maxsize=None)
-def get_math_extraction_regexes(
-    target: str,
-) -> tuple[
-    list[tuple[list[tuple[re.Pattern[str], int]], ExtractionTarget]],
-    list[tuple[list[tuple[re.Pattern[str], int]], ExtractionTarget]],
-]:
-    doc = build_doc(target)
-    return (
-        get_extraction_regexes(doc, TASK_GOLD, Language.ENGLISH),
-        get_extraction_regexes(doc, TASK_PRED, Language.ENGLISH),
+def extract_first_canonical_math_answer(text: str) -> str:
+    extracted = extract_target_from_pred(
+        text,
+        get_generic_math_pred_extraction_regexes(),
+        fallback_mode="first_match",
+        extraction_mode="any_match",
+        timeout_seconds=5,
     )
-
-
-def extract_gold_targets(target: str) -> list[ExtractionValue]:
-    gold_regexes, _ = get_math_extraction_regexes(str(target))
-    return list(
-        extract_target_from_pred(
-            str(target),
-            gold_regexes,
-            fallback_mode="first_match",
-            extraction_mode="any_match",
-            timeout_seconds=5,
-        )
-    )
-
-
-def extract_prediction_targets(target: str, completion: str) -> list[ExtractionValue]:
-    _, pred_regexes = get_math_extraction_regexes(str(target))
-    return list(
-        extract_target_from_pred(
-            completion,
-            pred_regexes,
-            fallback_mode="first_match",
-            extraction_mode="any_match",
-            timeout_seconds=5,
-        )
-    )
+    return str(extracted[0]) if extracted else text
 
 
 def score_match(target: str, completion: str, *, profile: str) -> float:
@@ -184,37 +159,15 @@ def score_pass_at_k(target: str, completions: list[str], n: int, k: int, profile
 
 def extract_vote_key(completion: str, target: str, profile: str) -> tuple[str, ...]:
     cleaned = clean_completions([completion], profile)[0]
-    extracted = extract_prediction_targets(target, cleaned)
-    if not extracted:
-        return NO_EXTRACTION_KEY
-    return tuple(str(item) for item in extracted)
+    del target
+    return (extract_first_canonical_math_answer(cleaned),)
 
 
 def score_maj_at_n(target: str, completions: list[str], n: int, profile: str) -> float:
     cleaned = clean_completions(completions[:n], profile)
-    gold_targets = extract_gold_targets(target)
-    vote_counts: dict[tuple[str, ...], int] = {}
-    first_seen: dict[tuple[str, ...], int] = {}
-    extracted_by_key: dict[tuple[str, ...], list[ExtractionValue]] = {}
-
-    for index, completion in enumerate(cleaned):
-        extracted = extract_prediction_targets(target, completion)
-        key = tuple(str(item) for item in extracted) if extracted else NO_EXTRACTION_KEY
-        if key not in vote_counts:
-            vote_counts[key] = 0
-            first_seen[key] = index
-            extracted_by_key[key] = extracted
-        vote_counts[key] += 1
-
-    winner = max(vote_counts, key=lambda key: (vote_counts[key], -first_seen[key]))
-    return float(
-        compare_gold_target(
-            gold_targets,
-            extracted_by_key[winner],
-            precision=MATH_EXTRACTION_PRECISION,
-            timeout_seconds=5,
-        )
-    )
+    metric = MajAtN(n=n)
+    metric.normalize = extract_first_canonical_math_answer
+    return float(metric.compute(build_doc(target), build_model_response(cleaned)))
 
 
 def strip_gpt_oss_reasoning(text: str) -> str | None:

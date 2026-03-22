@@ -3,11 +3,13 @@ import unittest
 from pathlib import Path
 
 from scripts.common import (
+    TaggedYamlLoader,
     build_evaluator_config,
     build_run_dir,
     build_tracker_output_path,
     load_model_settings,
     load_task_settings,
+    load_yaml,
 )
 
 
@@ -82,13 +84,22 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(config.model_args["seed"], 11)
         self.assertEqual(
             config.model_args["chat_template_args"]["reasoning_effort"],
-            "medium",
+            "high",
         )
         self.assertEqual(config.batch_size, "auto")
         self.assertEqual(config.metadata["seed"], 11)
         self.assertEqual(config.metadata["model"], "vllm")
         self.assertEqual(config.metadata["model_args"]["seed"], 11)
         self.assertNotIn("server_seed", config.metadata)
+
+    def test_aime24_prompt_keeps_literal_boxed_marker(self):
+        raw = load_yaml(
+            Path("tasks/aime24/aime24_custom.yaml"),
+            loader=TaggedYamlLoader,
+        )
+
+        self.assertIn(r"\boxed{}", raw["doc_to_text"])
+        self.assertNotIn("\b", raw["doc_to_text"])
 
     def test_load_model_settings_leaves_batch_size_unset_when_omitted(self):
         settings = load_model_settings(Path("models/dummy.yaml"))
