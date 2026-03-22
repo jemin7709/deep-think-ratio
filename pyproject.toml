@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "kernels>=0.12.3",
+    "lighteval==0.13.0",
     "lm-eval>=0.4.11",
     "ray>=2.54.0",
     "vllm>=0.18.0",

@@ -1,0 +1,4 @@
+model: vllm
+model_args:
+  pretrained: dummy/model
+predict_only: true

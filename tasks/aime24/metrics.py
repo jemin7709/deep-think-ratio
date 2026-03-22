@@ -2,16 +2,25 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter
-from math import prod
 from pathlib import Path
+from statistics import stdev
 
 from scripts.common import find_task_config_path, load_task_settings
 
-from .utils import extract_answer, is_equiv
+from .utils import (
+    resolve_model_identity,
+    resolve_reasoning_profile,
+    score_avg_at_n,
+    score_maj_at_n,
+    score_pass_at_k,
+)
 
 
 TASK_NAME = "aime24_custom"
+
+
+def sample_stddev(values: list[float]) -> float:
+    return stdev(values) if len(values) > 1 else 0.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,34 +73,19 @@ def load_samples(run_dir: Path, task_name: str) -> list[dict]:
     return [json.loads(line) for line in sample_path.read_text().splitlines() if line.strip()]
 
 
-def canonical_answers(completions: list[str]) -> list[str]:
-    return [extract_answer(completion) for completion in completions]
-
-
-def majority_answer(answers: list[str]) -> str:
-    return Counter(answers).most_common(1)[0][0]
-
-
-def pass_at_k(n: int, c: int, k: int) -> float:
-    if k > n:
-        raise ValueError(f"pass@{k} requires k <= n, got n={n}")
-    if c == 0:
-        return 0.0
-    if n - c < k:
-        return 1.0
-
-    product = prod(1.0 - (k / denominator) for denominator in range(n - c + 1, n + 1))
-    return 1.0 - product
-
-
-def summarize_run(samples: list[dict], k: int, expected_n: int) -> dict[str, float]:
+def summarize_run(
+    samples: list[dict],
+    k: int,
+    expected_n: int,
+    *,
+    profile: str = "identity",
+) -> dict[str, float]:
     samples_by_doc_id = {sample["doc_id"]: sample for sample in samples}
     if not samples_by_doc_id:
         raise ValueError("no valid samples found in run")
 
-    totals = {"pass": 0.0, "avg": 0.0, "first": 0.0, "maj": 0.0}
+    metric_values = {"pass": [], "avg": [], "maj": []}
     for sample in samples_by_doc_id.values():
-        # Read raw responses because the default lm-eval filter keeps only the first repeat.
         completions = [str(response) for response in sample["resps"][0]]
         actual_n = len(completions)
         if actual_n != expected_n:
@@ -100,23 +94,19 @@ def summarize_run(samples: list[dict], k: int, expected_n: int) -> dict[str, flo
             )
 
         target = str(sample["target"])
-        answers = canonical_answers(completions)
-        scores = [int(is_equiv(answer, target)) for answer in answers]
-        correct = sum(scores)
-
-        totals["pass"] += pass_at_k(actual_n, correct, k)
-        totals["avg"] += correct / actual_n
-        totals["first"] += float(scores[0])
-        totals["maj"] += float(is_equiv(majority_answer(answers), target))
+        metric_values["pass"].append(score_pass_at_k(target, completions, expected_n, k, profile))
+        metric_values["avg"].append(score_avg_at_n(target, completions, expected_n, profile))
+        metric_values["maj"].append(score_maj_at_n(target, completions, expected_n, profile))
 
     num_docs = len(samples_by_doc_id)
-
     return {
         "num_docs": float(num_docs),
-        "pass": totals["pass"] / num_docs,
-        "avg": totals["avg"] / num_docs,
-        "first": totals["first"] / num_docs,
-        "maj": totals["maj"] / num_docs,
+        "pass": sum(metric_values["pass"]) / num_docs,
+        "avg": sum(metric_values["avg"]) / num_docs,
+        "maj": sum(metric_values["maj"]) / num_docs,
+        "pass_stddev": sample_stddev(metric_values["pass"]),
+        "avg_stddev": sample_stddev(metric_values["avg"]),
+        "maj_stddev": sample_stddev(metric_values["maj"]),
     }
 
 
@@ -130,16 +120,21 @@ def build_postprocess_payload(
 ) -> dict:
     return {
         "run_dir": str(run_dir),
-        "model": aggregated.get("config", {}).get("model", "unknown"),
+        "model": resolve_model_identity(aggregated, run_dir),
         "task": task_name,
         "repeats": repeats,
         "k": k,
+        "stddev_kind": "sample",
         "metrics": {
             f"pass@{k}": summary["pass"],
             f"avg@{repeats}": summary["avg"],
             f"maj@{repeats}": summary["maj"],
-            "first@1": summary["first"],
             "num_docs": int(summary["num_docs"]),
+        },
+        "stddev": {
+            f"pass@{k}": summary["pass_stddev"],
+            f"avg@{repeats}": summary["avg_stddev"],
+            f"maj@{repeats}": summary["maj_stddev"],
         },
     }
 
@@ -152,17 +147,20 @@ def format_summary(
     k: int,
     n: int,
 ) -> str:
-    model_name = aggregated.get("config", {}).get("model", "unknown")
+    model_name = resolve_model_identity(aggregated, run_dir)
     lines = [
         f"run_dir: {run_dir}",
         f"model: {model_name}",
         f"task: {task_name}",
         f"repeats: {n}",
         f"pass@{k}: {summary['pass']:.6f}",
+        f"pass@{k} stddev: {summary['pass_stddev']:.6f}",
         f"avg@{n}: {summary['avg']:.6f}",
+        f"avg@{n} stddev: {summary['avg_stddev']:.6f}",
         f"maj@{n}: {summary['maj']:.6f}",
-        f"first@1: {summary['first']:.6f}",
+        f"maj@{n} stddev: {summary['maj_stddev']:.6f}",
         f"docs: {int(summary['num_docs'])}",
+        "stddev: sample",
     ]
 
     if k == 1:
@@ -191,7 +189,9 @@ def write_postprocess_artifacts(
     resolved_task_name = task_name or infer_task_name(aggregated)
     repeats = infer_repeats(aggregated, resolved_task_name)
     samples = load_samples(run_dir, resolved_task_name)
-    summary = summarize_run(samples, k=k, expected_n=repeats)
+    model_identity = resolve_model_identity(aggregated, run_dir)
+    profile = resolve_reasoning_profile(model_identity)
+    summary = summarize_run(samples, k=k, expected_n=repeats, profile=profile)
     payload = build_postprocess_payload(
         run_dir,
         aggregated,
