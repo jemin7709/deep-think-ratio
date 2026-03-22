@@ -29,14 +29,19 @@ def run_one(
     task_settings = load_task_settings(task_config_path)
     model_settings = load_model_settings(model_config_path)
     run_dir = build_run_dir(task_settings.name, model_settings.name, seed)
-    run_evaluation(
-        task_config_path=task_config_path,
-        model_config_path=model_config_path,
-        seed=seed,
-        run_dir=run_dir,
-        limit=limit,
-    )
-    write_postprocess_artifacts(run_dir=run_dir)
+    try:
+        run_evaluation(
+            task_config_path=task_config_path,
+            model_config_path=model_config_path,
+            seed=seed,
+            run_dir=run_dir,
+            limit=limit,
+        )
+        write_postprocess_artifacts(run_dir=run_dir)
+    except BaseException:
+        if run_dir.exists() and not any(run_dir.iterdir()):
+            run_dir.rmdir()
+        raise
     return run_dir
 
 

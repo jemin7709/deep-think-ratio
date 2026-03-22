@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -91,6 +92,90 @@ class RunManyTest(unittest.TestCase):
 
         run_evaluation_mock.assert_called_once()
         write_postprocess_mock.assert_not_called()
+
+    @patch("scripts.run_many.write_postprocess_artifacts")
+    @patch("scripts.run_many.run_evaluation", side_effect=RuntimeError("boom"))
+    @patch("scripts.run_many.build_run_dir")
+    def test_run_one_deletes_empty_run_dir_on_failure(
+        self,
+        build_run_dir_mock,
+        run_evaluation_mock,
+        write_postprocess_mock,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            run_dir.mkdir(parents=True)
+            build_run_dir_mock.return_value = run_dir
+
+            with self.assertRaisesRegex(RuntimeError, "boom"):
+                run_one(
+                    task_config_path=Path("tasks/aime24/aime24_custom.yaml"),
+                    model_config_path=Path("models/dummy.yaml"),
+                    seed=7,
+                    limit=None,
+                )
+
+            self.assertFalse(run_dir.exists())
+            run_evaluation_mock.assert_called_once()
+            write_postprocess_mock.assert_not_called()
+
+    @patch("scripts.run_many.write_postprocess_artifacts")
+    @patch("scripts.run_many.build_run_dir")
+    def test_run_one_keeps_partial_artifacts_on_failure(
+        self,
+        build_run_dir_mock,
+        write_postprocess_mock,
+    ):
+        def write_partial_results(**kwargs):
+            run_dir = kwargs["run_dir"]
+            (run_dir / "results_2026-03-22T00-00-00.json").write_text("{}\n", encoding="utf-8")
+            raise RuntimeError("boom")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            run_dir.mkdir(parents=True)
+            build_run_dir_mock.return_value = run_dir
+
+            with patch("scripts.run_many.run_evaluation", side_effect=write_partial_results):
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    run_one(
+                        task_config_path=Path("tasks/aime24/aime24_custom.yaml"),
+                        model_config_path=Path("models/dummy.yaml"),
+                        seed=7,
+                        limit=None,
+                    )
+
+            self.assertTrue(run_dir.exists())
+            self.assertTrue(
+                (run_dir / "results_2026-03-22T00-00-00.json").is_file()
+            )
+            write_postprocess_mock.assert_not_called()
+
+    @patch("scripts.run_many.write_postprocess_artifacts")
+    @patch("scripts.run_many.run_evaluation", side_effect=KeyboardInterrupt())
+    @patch("scripts.run_many.build_run_dir")
+    def test_run_one_deletes_empty_run_dir_on_keyboard_interrupt(
+        self,
+        build_run_dir_mock,
+        run_evaluation_mock,
+        write_postprocess_mock,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            run_dir.mkdir(parents=True)
+            build_run_dir_mock.return_value = run_dir
+
+            with self.assertRaises(KeyboardInterrupt):
+                run_one(
+                    task_config_path=Path("tasks/aime24/aime24_custom.yaml"),
+                    model_config_path=Path("models/dummy.yaml"),
+                    seed=7,
+                    limit=None,
+                )
+
+            self.assertFalse(run_dir.exists())
+            run_evaluation_mock.assert_called_once()
+            write_postprocess_mock.assert_not_called()
 
 
 if __name__ == "__main__":
