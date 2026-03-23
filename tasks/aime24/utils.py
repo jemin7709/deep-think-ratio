@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import re
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 from lighteval.metrics.dynamic_metrics import MultilingualExtractiveMatchMetric
 from lighteval.metrics.metrics_sample import AvgAtN, MajAtN, PassAtK
@@ -15,18 +15,15 @@ from lighteval.metrics.utils.extractive_match_utils import (
 from lighteval.models.model_output import ModelResponse
 from lighteval.tasks.requests import Doc
 from lighteval.utils.language import Language
+from lighteval.utils.utils import remove_reasoning_tags
 
 
 MATH_EXTRACTION_PRECISION = 6
 TASK_GOLD = (ExprExtractionConfig(), LatexExtractionConfig())
 TASK_PRED = (ExprExtractionConfig(), LatexExtractionConfig())
-GPT_OSS_FINAL_MARKER = "<|channel|>final"
-GPT_OSS_MESSAGE_MARKER = "<|message|>"
-GPT_OSS_END_MARKER = "<|end|>"
-GPT_OSS_REASONING_BLOCK_RE = re.compile(
-    r"<\|channel\|>(?:analysis(?: to=[^<]+)?|commentary to=[^<]+)<\|message\|>.*?<\|end\|>",
-    re.DOTALL,
-)
+ReasoningTags = list[tuple[str, str]]
+RUNTIME_REASONING_TAGS: ReasoningTags | None = None
+ASSISTANT_START_PREFIX = "<|start|>assistant"
 
 
 def resolve_model_identity(aggregated: dict, run_dir: Path) -> str:
@@ -49,46 +46,51 @@ def resolve_model_identity(aggregated: dict, run_dir: Path) -> str:
     return "unknown"
 
 
-def resolve_reasoning_profile(model_identity: str) -> str:
-    normalized = model_identity.lower()
-    if "gpt-oss" in normalized:
-        return "gptoss_harmony"
-    if "deepseek" in normalized:
-        return "deepseek_think_end"
-    if "qwen" in normalized:
-        return "qwen_think_end"
-    return "identity"
+def build_gpt_oss_reasoning_tags() -> ReasoningTags:
+    return [("<|channel|>analysis<|message|>", "<|end|><|start|>assistant<|channel|>final<|message|>")]
+
+
+def normalize_reasoning_tags(raw: object) -> ReasoningTags | None:
+    if raw is None:
+        return None
+    pairs = cast(list[tuple[str, str] | list[str]], raw)
+    return [(start_tag, end_tag) for start_tag, end_tag in pairs]
+
+
+def configure_runtime_reasoning_tags(raw: object) -> None:
+    global RUNTIME_REASONING_TAGS
+    RUNTIME_REASONING_TAGS = normalize_reasoning_tags(raw)
+
+
+def resolve_reasoning_tags(aggregated: dict) -> ReasoningTags | None:
+    config = aggregated.get("config", {})
+    metadata = config.get("metadata", {})
+    for candidate in (metadata.get("reasoning_tags"), config.get("reasoning_tags")):
+        tags = normalize_reasoning_tags(candidate)
+        if tags is not None:
+            return tags
+    return None
 
 
 def process_results(doc: dict, results: list[str]) -> dict[str, int]:
     answer_key = next(key for key in doc if key.lower() == "answer")
     completion = str(results[0])
-    profile = infer_profile_from_completion(completion)
-    score = score_match(str(doc[answer_key]), completion, profile=profile)
+    score = score_match(str(doc[answer_key]), completion, reasoning_tags=RUNTIME_REASONING_TAGS)
     return {"exact_match": int(score)}
 
 
-def infer_profile_from_completion(completion: str) -> str:
-    if GPT_OSS_FINAL_MARKER in completion or "<|channel|>analysis" in completion:
-        return "gptoss_harmony"
-    if "</think>" in completion or "<think>" in completion:
-        return "deepseek_think_end"
-    return "identity"
+def strip_reasoning(text: str, reasoning_tags: ReasoningTags | None) -> str:
+    if reasoning_tags is None:
+        return text
+    cleaned = remove_reasoning_tags(text, reasoning_tags)
+    return cleaned.removeprefix(ASSISTANT_START_PREFIX)
 
 
-def strip_reasoning_with_profile(text: str, profile: str) -> str | None:
-    if profile == "gptoss_harmony":
-        return strip_gpt_oss_reasoning(text)
-    if profile in {"deepseek_think_end", "qwen_think_end"}:
-        return strip_think_end_reasoning(text)
-    return text
-
-
-def clean_completions(completions: list[str], profile: str) -> list[str]:
-    return [
-        cleaned if cleaned is not None else ""
-        for cleaned in (strip_reasoning_with_profile(text, profile) for text in completions)
-    ]
+def clean_completions(
+    completions: list[str],
+    reasoning_tags: ReasoningTags | None = None,
+) -> list[str]:
+    return [strip_reasoning(text, reasoning_tags) for text in completions]
 
 
 def build_doc(target: str) -> Doc:
@@ -135,19 +137,35 @@ def extract_first_canonical_math_answer(text: str) -> str:
     return str(extracted[0]) if extracted else text
 
 
-def score_match(target: str, completion: str, *, profile: str) -> float:
-    cleaned = clean_completions([completion], profile)
+def score_match(
+    target: str,
+    completion: str,
+    *,
+    reasoning_tags: ReasoningTags | None = None,
+) -> float:
+    cleaned = clean_completions([completion], reasoning_tags)
     return float(make_math_matcher().compute(build_doc(target), build_model_response(cleaned)))
 
 
-def score_avg_at_n(target: str, completions: list[str], n: int, profile: str) -> float:
-    cleaned = clean_completions(completions[:n], profile)
+def score_avg_at_n(
+    target: str,
+    completions: list[str],
+    n: int,
+    reasoning_tags: ReasoningTags | None = None,
+) -> float:
+    cleaned = clean_completions(completions[:n], reasoning_tags)
     metric = AvgAtN(n=n, sample_scoring_function=make_math_matcher())
     return float(metric.compute(build_doc(target), build_model_response(cleaned)))
 
 
-def score_pass_at_k(target: str, completions: list[str], n: int, k: int, profile: str) -> float:
-    cleaned = clean_completions(completions[:n], profile)
+def score_pass_at_k(
+    target: str,
+    completions: list[str],
+    n: int,
+    k: int,
+    reasoning_tags: ReasoningTags | None = None,
+) -> float:
+    cleaned = clean_completions(completions[:n], reasoning_tags)
     metric = PassAtK(
         k=k,
         n=n,
@@ -157,40 +175,23 @@ def score_pass_at_k(target: str, completions: list[str], n: int, k: int, profile
     return float(metric.compute(build_doc(target), build_model_response(cleaned)))
 
 
-def extract_vote_key(completion: str, target: str, profile: str) -> tuple[str, ...]:
-    cleaned = clean_completions([completion], profile)[0]
+def extract_vote_key(
+    completion: str,
+    target: str,
+    reasoning_tags: ReasoningTags | None = None,
+) -> tuple[str, ...]:
+    cleaned = clean_completions([completion], reasoning_tags)[0]
     del target
     return (extract_first_canonical_math_answer(cleaned),)
 
 
-def score_maj_at_n(target: str, completions: list[str], n: int, profile: str) -> float:
-    cleaned = clean_completions(completions[:n], profile)
+def score_maj_at_n(
+    target: str,
+    completions: list[str],
+    n: int,
+    reasoning_tags: ReasoningTags | None = None,
+) -> float:
+    cleaned = clean_completions(completions[:n], reasoning_tags)
     metric = MajAtN(n=n)
     metric.normalize = extract_first_canonical_math_answer
     return float(metric.compute(build_doc(target), build_model_response(cleaned)))
-
-
-def strip_gpt_oss_reasoning(text: str) -> str | None:
-    final_index = text.rfind(GPT_OSS_FINAL_MARKER)
-    if final_index >= 0:
-        message_index = text.find(GPT_OSS_MESSAGE_MARKER, final_index)
-        if message_index >= 0:
-            content = text[message_index + len(GPT_OSS_MESSAGE_MARKER) :]
-            return content.split(GPT_OSS_END_MARKER, 1)[0]
-
-    if "<|channel|>" not in text and "<|start|>" not in text and GPT_OSS_END_MARKER not in text:
-        return text
-
-    cleaned = GPT_OSS_REASONING_BLOCK_RE.sub("", text)
-    if cleaned != text:
-        return cleaned.split(GPT_OSS_END_MARKER, 1)[0]
-    return text
-
-
-def strip_think_end_reasoning(text: str) -> str | None:
-    _, start_token, remainder = text.partition("<think>")
-    candidate = remainder if start_token else text
-    if "</think>" not in candidate:
-        return None
-    _, _, content = candidate.partition("</think>")
-    return content or None

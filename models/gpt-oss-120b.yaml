@@ -7,6 +7,8 @@ model_args:
   max_model_len: 131072
   chat_template_args:
     reasoning_effort: medium
+reasoning_tags:
+  - ["<|channel|>analysis<|message|>", "<|end|><|start|>assistant<|channel|>final<|message|>"]
 batch_size: auto
 apply_chat_template: true
 predict_only: true

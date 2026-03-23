@@ -11,6 +11,7 @@ from tasks.aime24.metrics import (
     summarize_run,
     write_postprocess_artifacts,
 )
+from tasks.aime24.utils import build_gpt_oss_reasoning_tags
 
 
 def sample_record(doc_id, target, completions, filtered_resps=None):
@@ -83,6 +84,9 @@ class CollectAime24Test(unittest.TestCase):
                 "config": {
                     "model": "dummy",
                     "model_args": {"pretrained": "openai/gpt-oss-120b"},
+                    "metadata": {
+                        "reasoning_tags": build_gpt_oss_reasoning_tags(),
+                    },
                 },
                 "results": {"aime24_custom": {}},
                 "configs": {"aime24_custom": {"repeats": 4}},

@@ -20,6 +20,7 @@ ALLOWED_MODEL_KEYS = {
     "batch_size",
     "max_batch_size",
     "device",
+    "reasoning_tags",
     "apply_chat_template",
     "fewshot_as_multiturn",
     "gen_kwargs",
@@ -64,6 +65,7 @@ class ModelSettings:
     batch_size: int | str | None = None
     max_batch_size: int | None = None
     device: str | None = None
+    reasoning_tags: list[list[str]] | None = None
     apply_chat_template: bool | str = True
     fewshot_as_multiturn: bool | None = True
     gen_kwargs: dict[str, Any] = field(default_factory=dict)
@@ -100,7 +102,7 @@ def load_task_settings(task_config_path: Path) -> TaskSettings:
 
 
 def load_model_settings(model_config_path: Path) -> ModelSettings:
-    raw = load_yaml(model_config_path)
+    raw = load_yaml(model_config_path, loader=TaggedYamlLoader)
     if set(raw) == {"server", "harness"}:
         raise ValueError(
             f"{model_config_path} uses the removed server/harness schema; "
@@ -127,6 +129,9 @@ def load_model_settings(model_config_path: Path) -> ModelSettings:
     chat_template_args = model_args.get("chat_template_args")
     if chat_template_args is not None and not isinstance(chat_template_args, dict):
         raise ValueError("model_args.chat_template_args must be a mapping")
+    reasoning_tags = raw.get("reasoning_tags")
+    if reasoning_tags is not None:
+        reasoning_tags = [list(item) for item in reasoning_tags]
 
     batch_size = raw.get("batch_size")
     if batch_size is not None and batch_size != "auto":
@@ -150,6 +155,7 @@ def load_model_settings(model_config_path: Path) -> ModelSettings:
         batch_size=batch_size,
         max_batch_size=max_batch_size,
         device=raw.get("device"),
+        reasoning_tags=reasoning_tags,
         apply_chat_template=apply_chat_template,
         fewshot_as_multiturn=fewshot_as_multiturn,
         gen_kwargs=gen_kwargs,
@@ -198,6 +204,7 @@ def build_metadata(
         "model_args": resolved_model_args,
         "batch_size": model_settings.batch_size,
         "max_batch_size": model_settings.max_batch_size,
+        "reasoning_tags": deepcopy(model_settings.reasoning_tags),
         "apply_chat_template": model_settings.apply_chat_template,
         "fewshot_as_multiturn": model_settings.fewshot_as_multiturn,
         "gen_kwargs": deepcopy(model_settings.gen_kwargs),

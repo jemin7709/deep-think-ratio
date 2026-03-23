@@ -90,6 +90,15 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(config.metadata["seed"], 11)
         self.assertEqual(config.metadata["model"], "vllm")
         self.assertEqual(config.metadata["model_args"]["seed"], 11)
+        self.assertEqual(
+            config.metadata["reasoning_tags"],
+            [
+                [
+                    "<|channel|>analysis<|message|>",
+                    "<|end|><|start|>assistant<|channel|>final<|message|>",
+                ]
+            ],
+        )
         self.assertNotIn("server_seed", config.metadata)
 
     def test_aime24_prompt_keeps_literal_boxed_marker(self):
@@ -104,6 +113,18 @@ class RuntimeConfigTest(unittest.TestCase):
     def test_load_model_settings_leaves_batch_size_unset_when_omitted(self):
         settings = load_model_settings(Path("models/dummy.yaml"))
         self.assertIsNone(settings.batch_size)
+
+    def test_load_model_settings_parses_reasoning_tags(self):
+        settings = load_model_settings(Path("models/gpt-oss-120b.yaml"))
+        self.assertEqual(
+            settings.reasoning_tags,
+            [
+                [
+                    "<|channel|>analysis<|message|>",
+                    "<|end|><|start|>assistant<|channel|>final<|message|>",
+                ]
+            ],
+        )
 
 
 if __name__ == "__main__":

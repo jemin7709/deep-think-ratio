@@ -9,7 +9,7 @@ from src.evaluation.common import find_task_config_path, load_task_settings
 
 from .utils import (
     resolve_model_identity,
-    resolve_reasoning_profile,
+    resolve_reasoning_tags,
     score_avg_at_n,
     score_maj_at_n,
     score_pass_at_k,
@@ -78,7 +78,7 @@ def summarize_run(
     k: int,
     expected_n: int,
     *,
-    profile: str = "identity",
+    reasoning_tags: list[tuple[str, str]] | None = None,
 ) -> dict[str, float]:
     samples_by_doc_id = {sample["doc_id"]: sample for sample in samples}
     if not samples_by_doc_id:
@@ -94,9 +94,11 @@ def summarize_run(
             )
 
         target = str(sample["target"])
-        metric_values["pass"].append(score_pass_at_k(target, completions, expected_n, k, profile))
-        metric_values["avg"].append(score_avg_at_n(target, completions, expected_n, profile))
-        metric_values["maj"].append(score_maj_at_n(target, completions, expected_n, profile))
+        metric_values["pass"].append(
+            score_pass_at_k(target, completions, expected_n, k, reasoning_tags)
+        )
+        metric_values["avg"].append(score_avg_at_n(target, completions, expected_n, reasoning_tags))
+        metric_values["maj"].append(score_maj_at_n(target, completions, expected_n, reasoning_tags))
 
     num_docs = len(samples_by_doc_id)
     return {
@@ -189,9 +191,8 @@ def write_postprocess_artifacts(
     resolved_task_name = task_name or infer_task_name(aggregated)
     repeats = infer_repeats(aggregated, resolved_task_name)
     samples = load_samples(run_dir, resolved_task_name)
-    model_identity = resolve_model_identity(aggregated, run_dir)
-    profile = resolve_reasoning_profile(model_identity)
-    summary = summarize_run(samples, k=k, expected_n=repeats, profile=profile)
+    reasoning_tags = resolve_reasoning_tags(aggregated)
+    summary = summarize_run(samples, k=k, expected_n=repeats, reasoning_tags=reasoning_tags)
     payload = build_postprocess_payload(
         run_dir,
         aggregated,

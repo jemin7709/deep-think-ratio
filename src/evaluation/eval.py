@@ -11,6 +11,7 @@ from src.evaluation.common import (
     load_model_settings,
     load_task_settings,
 )
+from tasks.aime24.utils import configure_runtime_reasoning_tags
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,6 +63,7 @@ def run_evaluation(
 ) -> Path:
     task_settings = load_task_settings(task_config_path)
     model_settings = load_model_settings(model_config_path)
+    configure_runtime_reasoning_tags(model_settings.reasoning_tags)
     config = build_evaluator_config(
         task_settings,
         model_settings,
