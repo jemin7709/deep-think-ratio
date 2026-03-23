@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import torch
 
+from src.plot.jsd_heatmap import render_heatmap
 from src.dtr.jsd_utils import HiddenStateMode
 from src.dtr.jsd_utils import compute_jsd_matrix_from_model
 from src.dtr.jsd_utils import infer_task_name
@@ -54,7 +56,98 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="JSD matrix 저장 디렉토리 (기본값: <run_dir>/jsd_matrices)",
     )
+    parser.add_argument(
+        "--save-heatmap",
+        action="store_true",
+        help="각 JSD matrix에 대응하는 heatmap PNG도 함께 저장",
+    )
+    parser.add_argument(
+        "--heatmap-dir",
+        type=Path,
+        default=None,
+        help="heatmap 저장 디렉토리 (기본값: <output_dir>/heatmaps)",
+    )
+    parser.add_argument(
+        "--heatmap-cell-width",
+        type=int,
+        default=None,
+        help="heatmap 토큰 축 셀 너비",
+    )
+    parser.add_argument(
+        "--heatmap-cell-height",
+        type=int,
+        default=None,
+        help="heatmap 레이어 축 셀 높이",
+    )
+    parser.add_argument(
+        "--max-token-labels",
+        type=int,
+        default=None,
+        help="heatmap X축에 표시할 최대 토큰 라벨 수",
+    )
+    parser.add_argument(
+        "--max-layer-labels",
+        type=int,
+        default=24,
+        help="heatmap Y축에 표시할 최대 레이어 라벨 수",
+    )
+    parser.add_argument(
+        "--heatmap-vmax",
+        type=float,
+        default=None,
+        help="heatmap color scale 상한. 생략하면 matrix 최댓값 사용",
+    )
+    parser.add_argument(
+        "--heatmap-font-size",
+        type=int,
+        default=14,
+        help="heatmap 축 라벨 폰트 크기",
+    )
     return parser.parse_args()
+
+
+def escape_token_label(text: str) -> str:
+    if not text:
+        return "<empty>"
+    return text.replace("\n", "\\n").replace("\t", "\\t")
+
+
+def build_token_labels(tokenizer: Any, response_token_ids: torch.Tensor) -> list[str]:
+    labels: list[str] = []
+    for token_id in response_token_ids.tolist():
+        decoded = tokenizer.decode(
+            [token_id],
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=False,
+        )
+        if not decoded:
+            decoded = tokenizer.convert_ids_to_tokens(
+                [token_id],
+                skip_special_tokens=False,
+            )[0]
+        labels.append(escape_token_label(decoded))
+    return labels
+
+
+def build_heatmap_title(
+    *,
+    doc_id: int,
+    repeat_index: int,
+    hidden_state_mode: HiddenStateMode,
+) -> str:
+    return f"doc={doc_id} rep={repeat_index} mode={hidden_state_mode}"
+
+
+def build_heatmap_subtitle(
+    *,
+    num_tokens: int,
+    num_layers: int,
+) -> str:
+    return f"{num_tokens} tokens x {num_layers} layers (top=last, bottom=0)"
+
+
+def heatmap_path(heatmap_dir: Path, doc_id: int, repeat_index: int) -> Path:
+    return heatmap_dir / f"doc{doc_id}_rep{repeat_index}.png"
 
 
 def main() -> None:
@@ -65,6 +158,13 @@ def main() -> None:
     samples_path = latest_samples_file(run_dir, task_name)
     output_dir = (args.output_dir or run_dir / "jsd_matrices").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    heatmap_dir = (
+        (args.heatmap_dir or output_dir / "heatmaps").resolve()
+        if args.save_heatmap
+        else None
+    )
+    if heatmap_dir is not None:
+        heatmap_dir.mkdir(parents=True, exist_ok=True)
 
     model_path = resolve_model_path(aggregated)
     hidden_state_mode: HiddenStateMode = args.hidden_state_mode
@@ -85,6 +185,8 @@ def main() -> None:
     print(f"샘플 파일: {samples_path}")
     print(f"JSD matrix 출력 디렉토리: {output_dir}")
     print(f"hidden state 모드: {hidden_state_mode}")
+    if heatmap_dir is not None:
+        print(f"heatmap 출력 디렉토리: {heatmap_dir}")
 
     manifest_entries: list[dict[str, int | str]] = []
 
@@ -124,6 +226,30 @@ def main() -> None:
             },
             output_path,
         )
+        plot_path: Path | None = None
+        if heatmap_dir is not None:
+            plot_path = heatmap_path(heatmap_dir, sample.doc_id, sample.repeat_index)
+            token_labels = build_token_labels(tokenizer, response_token_ids.cpu())
+            render_heatmap(
+                jsd_matrix=jsd_matrix,
+                token_labels=token_labels,
+                title=build_heatmap_title(
+                    doc_id=sample.doc_id,
+                    repeat_index=sample.repeat_index,
+                    hidden_state_mode=hidden_state_mode,
+                ),
+                subtitle=build_heatmap_subtitle(
+                    num_tokens=int(response_token_ids.shape[0]),
+                    num_layers=int(jsd_matrix.shape[1]),
+                ),
+                output_path=plot_path,
+                cell_width=args.heatmap_cell_width,
+                cell_height=args.heatmap_cell_height,
+                max_token_labels=args.max_token_labels,
+                max_layer_labels=args.max_layer_labels,
+                font_size=args.heatmap_font_size,
+                vmax=args.heatmap_vmax,
+            )
 
         manifest_entries.append(
             {
@@ -131,14 +257,17 @@ def main() -> None:
                 "repeat_index": sample.repeat_index,
                 "num_tokens": int(response_token_ids.shape[0]),
                 "path": str(output_path),
+                "plot_path": str(plot_path) if plot_path is not None else "",
             }
         )
 
+        saved_plot = f" plot={plot_path.name}" if plot_path is not None else ""
         print(
             f"[{index}/{len(samples)}] "
             f"doc={sample.doc_id} rep={sample.repeat_index} "
             f"tokens={response_token_ids.shape[0]} "
             f"saved={output_path.name}"
+            f"{saved_plot}"
         )
 
     manifest_path = output_dir / "manifest.json"
@@ -152,6 +281,7 @@ def main() -> None:
                 "hidden_state_mode": hidden_state_mode,
                 "token_block_size": args.token_block_size,
                 "num_samples": len(manifest_entries),
+                "heatmap_dir": str(heatmap_dir) if heatmap_dir is not None else "",
                 "files": manifest_entries,
             },
             indent=2,

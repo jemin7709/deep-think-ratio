@@ -8,6 +8,7 @@ dependencies = [
     "kernels>=0.12.3",
     "lighteval==0.13.0",
     "lm-eval>=0.4.11",
+    "pillow>=11.0.0",
     "ray>=2.54.0",
     "torch",
     "transformers",
