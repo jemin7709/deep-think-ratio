@@ -67,15 +67,12 @@ def validate_payloads(payloads: list[dict[str, Any]]) -> None:
 
     expected_identity = _shared_identity(payloads[0])
     expected_metrics = _metric_keys(payloads[0], "metrics")
-    expected_stddev = _metric_keys(payloads[0], "stddev")
 
     for payload in payloads[1:]:
         if _shared_identity(payload) != expected_identity:
             raise ValueError("all postprocess payloads must share task/model/repeats/k")
         if _metric_keys(payload, "metrics") != expected_metrics:
             raise ValueError("all postprocess payloads must share the same metric keys")
-        if _metric_keys(payload, "stddev") != expected_stddev:
-            raise ValueError("all postprocess payloads must share the same stddev keys")
 
 
 def _mean_by_key(
@@ -90,7 +87,7 @@ def _mean_by_key(
 
 
 def _stddev_by_metric(payloads: list[dict[str, Any]]) -> dict[str, float]:
-    keys = _metric_keys(payloads[0], "metrics")
+    keys = [key for key in _metric_keys(payloads[0], "metrics") if key != "num_docs"]
     return {
         key: sample_stddev([float(payload["metrics"][key]) for payload in payloads])
         for key in keys
@@ -102,7 +99,6 @@ def _iter_source_metrics(payloads: list[dict[str, Any]]) -> Iterable[dict[str, A
         yield {
             "run_dir": str(payload.get("run_dir", "")),
             "metrics": {key: float(value) for key, value in payload["metrics"].items()},
-            "stddev": {key: float(value) for key, value in payload["stddev"].items()},
         }
 
 
@@ -123,7 +119,6 @@ def build_output(
         "num_docs_per_source": [int(payload["metrics"]["num_docs"]) for payload in payloads],
         "metrics_mean": _mean_by_key(payloads, "metrics"),
         "metrics_stddev": _stddev_by_metric(payloads),
-        "source_stddev_mean": _mean_by_key(payloads, "stddev"),
         "aggregation": {
             "input_path": str(input_path),
             "mode": "single_postprocess_file" if len(sources) == 1 else "directory_tree",

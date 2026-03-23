@@ -13,17 +13,11 @@ def write_postprocess(path: Path, *, run_dir: str, task: str = "aime24_custom", 
         "task": task,
         "repeats": repeats,
         "k": k,
-        "stddev_kind": "sample",
         "metrics": {
             "pass@1": pass_at_1,
             f"avg@{repeats}": avg_at_n,
             f"maj@{repeats}": maj_at_n,
             "num_docs": 30,
-        },
-        "stddev": {
-            "pass@1": 0.1,
-            f"avg@{repeats}": 0.1,
-            f"maj@{repeats}": 0.2,
         },
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -73,10 +67,13 @@ class AveragePostprocessTest(unittest.TestCase):
             self.assertAlmostEqual(output["metrics_mean"]["avg@4"], 0.6)
             self.assertAlmostEqual(output["metrics_mean"]["maj@4"], 0.8)
             self.assertAlmostEqual(output["metrics_stddev"]["pass@1"], 0.282842712474619)
+            self.assertNotIn("num_docs", output["metrics_stddev"])
             self.assertEqual(
                 [entry["run_dir"] for entry in output["aggregation"]["source_metrics"]],
                 ["/tmp/run-a", "/tmp/run-b"],
             )
+            self.assertNotIn("source_stddev_mean", output)
+            self.assertNotIn("stddev", output["aggregation"]["source_metrics"][0])
 
     def test_build_output_rejects_mismatched_metric_keys(self):
         payload_a = {
@@ -86,7 +83,6 @@ class AveragePostprocessTest(unittest.TestCase):
             "repeats": 4,
             "k": 1,
             "metrics": {"pass@1": 0.5, "num_docs": 30},
-            "stddev": {"pass@1": 0.1},
         }
         payload_b = {
             "run_dir": "/tmp/run-b",
@@ -95,7 +91,6 @@ class AveragePostprocessTest(unittest.TestCase):
             "repeats": 4,
             "k": 1,
             "metrics": {"avg@4": 0.5, "num_docs": 30},
-            "stddev": {"avg@4": 0.1},
         }
 
         with self.assertRaisesRegex(ValueError, "metric keys"):

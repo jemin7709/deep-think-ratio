@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from statistics import stdev
 
 from src.evaluation.common import find_task_config_path, load_task_settings
 
@@ -17,10 +16,6 @@ from .utils import (
 
 
 TASK_NAME = "aime24_custom"
-
-
-def sample_stddev(values: list[float]) -> float:
-    return stdev(values) if len(values) > 1 else 0.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -106,9 +101,6 @@ def summarize_run(
         "pass": sum(metric_values["pass"]) / num_docs,
         "avg": sum(metric_values["avg"]) / num_docs,
         "maj": sum(metric_values["maj"]) / num_docs,
-        "pass_stddev": sample_stddev(metric_values["pass"]),
-        "avg_stddev": sample_stddev(metric_values["avg"]),
-        "maj_stddev": sample_stddev(metric_values["maj"]),
     }
 
 
@@ -126,17 +118,11 @@ def build_postprocess_payload(
         "task": task_name,
         "repeats": repeats,
         "k": k,
-        "stddev_kind": "sample",
         "metrics": {
             f"pass@{k}": summary["pass"],
             f"avg@{repeats}": summary["avg"],
             f"maj@{repeats}": summary["maj"],
             "num_docs": int(summary["num_docs"]),
-        },
-        "stddev": {
-            f"pass@{k}": summary["pass_stddev"],
-            f"avg@{repeats}": summary["avg_stddev"],
-            f"maj@{repeats}": summary["maj_stddev"],
         },
     }
 
@@ -156,13 +142,9 @@ def format_summary(
         f"task: {task_name}",
         f"repeats: {n}",
         f"pass@{k}: {summary['pass']:.6f}",
-        f"pass@{k} stddev: {summary['pass_stddev']:.6f}",
         f"avg@{n}: {summary['avg']:.6f}",
-        f"avg@{n} stddev: {summary['avg_stddev']:.6f}",
         f"maj@{n}: {summary['maj']:.6f}",
-        f"maj@{n} stddev: {summary['maj_stddev']:.6f}",
         f"docs: {int(summary['num_docs'])}",
-        "stddev: sample",
     ]
 
     if k == 1:

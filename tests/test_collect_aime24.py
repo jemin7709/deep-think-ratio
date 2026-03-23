@@ -44,8 +44,6 @@ class CollectAime24Test(unittest.TestCase):
         summary = summarize_run(samples, k=1, expected_n=4)
         self.assertAlmostEqual(summary["pass"], 0.375)
         self.assertAlmostEqual(summary["avg"], 0.375)
-        self.assertAlmostEqual(summary["pass_stddev"], 0.1767766952966369)
-        self.assertAlmostEqual(summary["avg_stddev"], 0.1767766952966369)
 
     def test_majority_vote_uses_extracted_target(self):
         samples = [
@@ -62,7 +60,6 @@ class CollectAime24Test(unittest.TestCase):
         ]
         summary = summarize_run(samples, k=1, expected_n=4)
         self.assertEqual(summary["maj"], 1.0)
-        self.assertEqual(summary["maj_stddev"], 0.0)
 
     def test_infer_task_name_and_repeats_from_aggregated_results(self):
         aggregated = {
@@ -122,13 +119,9 @@ class CollectAime24Test(unittest.TestCase):
             self.assertEqual(payload["model"], "openai/gpt-oss-120b")
             self.assertEqual(payload["metrics"]["avg@4"], 0.5)
             self.assertEqual(payload["metrics"]["maj@4"], 1.0)
-            self.assertEqual(payload["stddev"]["avg@4"], 0.0)
-            self.assertEqual(payload["stddev"]["maj@4"], 0.0)
             self.assertNotIn("first@1", payload["metrics"])
             self.assertIn("avg@4: 0.500000", rendered)
-            self.assertIn("avg@4 stddev: 0.000000", rendered)
             self.assertIn("maj@4: 1.000000", rendered)
-            self.assertIn("maj@4 stddev: 0.000000", rendered)
             self.assertNotIn("first@1", rendered)
 
     def test_summarize_run_rejects_repeat_mismatch(self):
@@ -141,11 +134,8 @@ class CollectAime24Test(unittest.TestCase):
         summary = {
             "num_docs": 1.0,
             "pass": 0.5,
-            "pass_stddev": 0.0,
             "avg": 0.5,
-            "avg_stddev": 0.0,
             "maj": 1.0,
-            "maj_stddev": 0.0,
         }
         payload = build_postprocess_payload(
             Path("/tmp/run"),
@@ -165,12 +155,10 @@ class CollectAime24Test(unittest.TestCase):
         )
 
         self.assertEqual(payload["metrics"]["avg@10"], 0.5)
-        self.assertEqual(payload["stddev"]["avg@10"], 0.0)
         self.assertNotIn("first@1", payload["metrics"])
         self.assertEqual(payload["model"], "dummy/model")
         self.assertIn("task: aime24_custom", rendered)
         self.assertIn("avg@10: 0.500000", rendered)
-        self.assertIn("avg@10 stddev: 0.000000", rendered)
 
 
 if __name__ == "__main__":
