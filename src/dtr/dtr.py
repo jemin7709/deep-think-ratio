@@ -9,6 +9,7 @@ from pathlib import Path
 import torch
 
 from src.dtr.jsd_utils import compute_dtr_from_jsd_matrix
+from src.dtr.jsd_utils import dtr_results_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-path",
         type=Path,
-        help="결과 JSON 경로 (기본값: <run_dir>/dtr_results_from_jsd.json)",
+        help="결과 JSON 경로 (기본값: <run_dir>/dtr/dtr_results_from_jsd.json)",
     )
     return parser.parse_args()
 
@@ -42,7 +43,7 @@ def main() -> None:
     args = parse_args()
 
     matrix_dir = args.matrix_dir or args.run_dir / "jsd_matrices"
-    output_path = args.output_path or args.run_dir / "dtr_results_from_jsd.json"
+    output_path = args.output_path or dtr_results_path(args.run_dir)
 
     matrix_paths = sorted(matrix_dir.glob("doc*_rep*.pt"))
     print(f"처리할 JSD matrix 수: {len(matrix_paths)}")
@@ -74,6 +75,7 @@ def main() -> None:
             f"deep={entry['num_deep_tokens']}"
         )
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(results, indent=2, ensure_ascii=False),
         encoding="utf-8",

@@ -12,6 +12,7 @@ from src.aggregation.dtr_pass1_correlation import (
     pearson_r,
     write_summary_json,
 )
+from src.dtr.jsd_utils import dtr_results_path
 from tasks.aime24.utils import build_gpt_oss_reasoning_tags
 
 
@@ -74,7 +75,7 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             run_dir = Path(tmpdir)
             results_path = run_dir / "results_2026-03-22T00-00-00.json"
             samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
-            dtr_path = run_dir / "dtr_results_from_jsd.json"
+            dtr_path = dtr_results_path(run_dir)
             output_path = run_dir / DEFAULT_SUMMARY_FILENAME
 
             results_path.write_text(
@@ -82,6 +83,7 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
                 encoding="utf-8",
             )
             samples_path.write_text("", encoding="utf-8")
+            dtr_path.parent.mkdir(parents=True, exist_ok=True)
             dtr_path.write_text(
                 json.dumps(
                     [

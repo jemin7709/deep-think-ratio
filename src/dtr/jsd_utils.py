@@ -136,6 +136,16 @@ def jsd_matrix_path(output_dir: Path, doc_id: int, repeat_index: int) -> Path:
     return output_dir / f"doc{doc_id}_rep{repeat_index}.pt"
 
 
+def dtr_output_dir(run_dir: Path) -> Path:
+    """run dir 아래 DTR 관련 산출물을 모을 기본 디렉터리."""
+    return run_dir / "dtr"
+
+
+def dtr_results_path(run_dir: Path) -> Path:
+    """run dir 기준 기본 DTR JSON 경로."""
+    return dtr_output_dir(run_dir) / "dtr_results_from_jsd.json"
+
+
 def extract_hidden_states(
     model: Any,
     prompt_token_ids: Tensor,

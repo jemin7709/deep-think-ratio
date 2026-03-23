@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean
 
-from src.dtr.jsd_utils import latest_matching_file, load_aggregated_results
+from src.dtr.jsd_utils import dtr_results_path, latest_matching_file, load_aggregated_results
 from src.plot.dtr_pass1_correlation import plot_to_png
 from tasks.aime24.metrics import TASK_NAME, infer_task_name
 from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags, score_match
@@ -75,7 +75,7 @@ def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path | No
     dtr_path = (
         args.dtr_path.resolve()
         if args.dtr_path is not None
-        else run_dir / "dtr_results_from_jsd.json"
+        else dtr_results_path(run_dir)
     )
     results_path = (
         args.results_path.resolve()

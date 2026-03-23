@@ -17,7 +17,7 @@ def write_summary(path: Path, *, run_dir: str, model: str = "openai/gpt-oss-120b
         "run_dir": run_dir,
         "task": "aime24_custom",
         "model": model,
-        "dtr_path": f"{run_dir}/dtr_results_from_jsd.json",
+        "dtr_path": f"{run_dir}/dtr/dtr_results_from_jsd.json",
         "results_path": f"{run_dir}/results_2026-03-22.json",
         "samples_path": f"{run_dir}/samples_aime24_custom_2026-03-22.jsonl",
         "num_sequences": 4,
