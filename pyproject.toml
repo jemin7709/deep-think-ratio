@@ -16,4 +16,5 @@ dependencies = [
 ]
 
 [tool.pyrefly]
-search_path = [".", "src"]
+search_path = ["."]
+python-interpreter-path = ".venv/bin/python"
