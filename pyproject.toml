@@ -9,5 +9,10 @@ dependencies = [
     "lighteval==0.13.0",
     "lm-eval>=0.4.11",
     "ray>=2.54.0",
+    "torch",
+    "transformers",
     "vllm>=0.18.0",
 ]
+
+[tool.pyrefly]
+search_path = [".", "src"]
