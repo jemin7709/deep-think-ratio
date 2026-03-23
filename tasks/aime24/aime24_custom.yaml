@@ -22,7 +22,7 @@ generation_kwargs:
     - "</s>"
     - "<|im_end|>"
     - "<|eot_id|>"
-repeats: 10
+repeats: 48
 num_fewshot: 0
 metadata:
   version: 0.1
