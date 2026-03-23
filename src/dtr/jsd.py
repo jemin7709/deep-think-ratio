@@ -62,6 +62,11 @@ def parse_args() -> argparse.Namespace:
         help="각 JSD matrix에 대응하는 heatmap PNG도 함께 저장",
     )
     parser.add_argument(
+        "--render-heatmaps-only",
+        action="store_true",
+        help="기존 jsd_matrices/*.pt 캐시만 읽어 heatmap PNG만 다시 생성",
+    )
+    parser.add_argument(
         "--heatmap-dir",
         type=Path,
         default=None,
@@ -150,17 +155,110 @@ def heatmap_path(heatmap_dir: Path, doc_id: int, repeat_index: int) -> Path:
     return heatmap_dir / f"doc{doc_id}_rep{repeat_index}.png"
 
 
+def resolve_hidden_state_mode(raw: object) -> HiddenStateMode:
+    if raw in ("raw_raw", "raw_normed", "normed_normed"):
+        return raw
+    raise ValueError(f"unsupported hidden_state_mode in cached payload: {raw}")
+
+
+def resolve_heatmap_dir(output_dir: Path, heatmap_dir: Path | None) -> Path:
+    return (heatmap_dir or output_dir / "heatmaps").resolve()
+
+
+def render_existing_heatmaps(
+    *,
+    output_dir: Path,
+    heatmap_dir: Path,
+    heatmap_cell_width: int | None,
+    heatmap_cell_height: int | None,
+    max_token_labels: int | None,
+    max_layer_labels: int,
+    heatmap_font_size: int,
+    heatmap_vmax: float | None,
+) -> None:
+    matrix_paths = sorted(output_dir.glob("doc*_rep*.pt"))
+    if not matrix_paths:
+        raise FileNotFoundError(f"no JSD matrices found under {output_dir}")
+
+    from transformers import AutoTokenizer
+
+    tokenizer: Any | None = None
+    tokenizer_model_path: str | None = None
+    print(f"heatmap-only 입력 디렉토리: {output_dir}")
+    print(f"heatmap 출력 디렉토리: {heatmap_dir}")
+    print(f"처리할 JSD matrix 수: {len(matrix_paths)}")
+
+    for index, matrix_path in enumerate(matrix_paths, start=1):
+        payload = torch.load(matrix_path, map_location="cpu", weights_only=False)
+        model_path = str(payload["model_path"])
+        if tokenizer is None or tokenizer_model_path != model_path:
+            tokenizer = AutoTokenizer.from_pretrained(model_path)
+            tokenizer_model_path = model_path
+
+        doc_id = int(payload["doc_id"])
+        repeat_index = int(payload["repeat_index"])
+        response_token_ids = torch.as_tensor(payload["response_token_ids"], dtype=torch.long)
+        jsd_matrix = torch.as_tensor(payload["jsd_matrix"])
+        hidden_state_mode = resolve_hidden_state_mode(
+            payload.get("hidden_state_mode", "normed_normed")
+        )
+
+        plot_path = heatmap_path(heatmap_dir, doc_id, repeat_index)
+        token_labels = build_token_labels(tokenizer, response_token_ids)
+        render_heatmap(
+            jsd_matrix=jsd_matrix,
+            token_labels=token_labels,
+            title=build_heatmap_title(
+                doc_id=doc_id,
+                repeat_index=repeat_index,
+                hidden_state_mode=hidden_state_mode,
+            ),
+            subtitle=build_heatmap_subtitle(
+                num_tokens=int(response_token_ids.shape[0]),
+                num_layers=int(jsd_matrix.shape[1]),
+            ),
+            output_path=plot_path,
+            cell_width=heatmap_cell_width,
+            cell_height=heatmap_cell_height,
+            max_token_labels=max_token_labels,
+            max_layer_labels=max_layer_labels,
+            font_size=heatmap_font_size,
+            vmax=heatmap_vmax,
+        )
+        print(
+            f"[{index}/{len(matrix_paths)}] "
+            f"doc={doc_id} rep={repeat_index} "
+            f"plot={plot_path.name}"
+        )
+
+
 def main() -> None:
     args = parse_args()
     run_dir = args.run_dir.resolve()
+    output_dir = (args.output_dir or run_dir / "jsd_matrices").resolve()
+    should_render_heatmaps = args.save_heatmap or args.render_heatmaps_only
+    if args.render_heatmaps_only:
+        heatmap_dir = resolve_heatmap_dir(output_dir, args.heatmap_dir)
+        heatmap_dir.mkdir(parents=True, exist_ok=True)
+        render_existing_heatmaps(
+            output_dir=output_dir,
+            heatmap_dir=heatmap_dir,
+            heatmap_cell_width=args.heatmap_cell_width,
+            heatmap_cell_height=args.heatmap_cell_height,
+            max_token_labels=args.max_token_labels,
+            max_layer_labels=args.max_layer_labels,
+            heatmap_font_size=args.heatmap_font_size,
+            heatmap_vmax=args.heatmap_vmax,
+        )
+        return
+
     aggregated = load_aggregated_results(run_dir)
     task_name = args.task or infer_task_name(aggregated)
     samples_path = latest_samples_file(run_dir, task_name)
-    output_dir = (args.output_dir or run_dir / "jsd_matrices").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     heatmap_dir = (
-        (args.heatmap_dir or output_dir / "heatmaps").resolve()
-        if args.save_heatmap
+        resolve_heatmap_dir(output_dir, args.heatmap_dir)
+        if should_render_heatmaps
         else None
     )
     if heatmap_dir is not None:
@@ -196,7 +294,6 @@ def main() -> None:
             sample.prompt_text,
             sample.response_text,
         )
-
         jsd_matrix = compute_jsd_matrix_from_model(
             model=model,
             prompt_token_ids=prompt_token_ids,
