@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from statistics import stdev
 
-from scripts.common import find_task_config_path, load_task_settings
+from src.evaluation.common import find_task_config_path, load_task_settings
 
 from .utils import (
     resolve_model_identity,

@@ -74,7 +74,7 @@ class CollectAime24Test(unittest.TestCase):
 
     def test_infer_repeats_from_task_config_when_aggregated_missing(self):
         aggregated = {"results": {"aime24_custom": {}}}
-        self.assertEqual(infer_repeats(aggregated, "aime24_custom"), 10)
+        self.assertEqual(infer_repeats(aggregated, "aime24_custom"), 48)
 
     def test_write_postprocess_artifacts_uses_raw_resps(self):
         with tempfile.TemporaryDirectory() as tmpdir:

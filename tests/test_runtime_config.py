@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.common import (
+from src.evaluation.common import (
     TaggedYamlLoader,
     build_evaluator_config,
     build_run_dir,
@@ -84,7 +84,7 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(config.model_args["seed"], 11)
         self.assertEqual(
             config.model_args["chat_template_args"]["reasoning_effort"],
-            "high",
+            "medium",
         )
         self.assertEqual(config.batch_size, "auto")
         self.assertEqual(config.metadata["seed"], 11)

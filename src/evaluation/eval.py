@@ -6,7 +6,7 @@ from pathlib import Path
 from lm_eval.evaluator import simple_evaluate
 from lm_eval.loggers import EvaluationTracker
 
-from scripts.common import (
+from src.evaluation.common import (
     build_evaluator_config,
     load_model_settings,
     load_task_settings,

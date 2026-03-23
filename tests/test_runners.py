@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from lm_eval.loggers import EvaluationTracker
 
 from run import run_one
-from scripts.eval import save_raw_results, validate_repeats
+from src.evaluation.eval import save_raw_results, validate_repeats
 
 
 class EvalRunnerTest(unittest.TestCase):

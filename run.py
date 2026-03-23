@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from scripts.common import build_run_dir, load_model_settings, load_task_settings
-from scripts.eval import run_evaluation
+from src.evaluation.common import build_run_dir, load_model_settings, load_task_settings
+from src.evaluation.eval import run_evaluation
 from tasks.aime24.metrics import write_postprocess_artifacts
 
 
