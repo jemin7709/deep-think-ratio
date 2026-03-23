@@ -299,6 +299,8 @@ def render_summary(
         f"delta_vs_mean_avg: {summary['delta']['vs_mean_avg']:.6f}",
         f"total_full_tokens: {summary['cost']['total_full_tokens']}",
         f"total_think_tokens: {summary['cost']['total_think_tokens']}",
+        f"mean_full_tokens_per_doc: {summary['cost']['mean_full_tokens_per_doc']:.6f}",
+        f"mean_think_tokens_per_doc: {summary['cost']['mean_think_tokens_per_doc']:.6f}",
         f"saved_tokens: {summary['cost']['saved_tokens']}",
         f"saved_pct: {summary['cost']['saved_pct']:.6%}",
         f"num_docs: {summary['metrics']['num_docs']}",

@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -149,6 +150,34 @@ class ThinkNExperimentTest(unittest.TestCase):
             self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["repeat_index"], 0)
             self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["prefix_dtr"], 1.0)
             self.assertIn("think_maj@2: 1.000000", rendered)
+            self.assertIn(
+                "mean_full_tokens_per_doc",
+                rendered,
+            )
+            self.assertIn(
+                "mean_think_tokens_per_doc",
+                rendered,
+            )
+            mean_full_tokens_per_doc = payload["summary"]["cost"]["mean_full_tokens_per_doc"]
+            mean_think_tokens_per_doc = payload["summary"]["cost"][
+                "mean_think_tokens_per_doc"
+            ]
+            self.assertEqual(mean_full_tokens_per_doc, 16.0)
+            self.assertEqual(mean_think_tokens_per_doc, 12.0)
+            match = re.search(
+                r"^mean_full_tokens_per_doc:\s*([0-9]+(?:\.[0-9]+)?)$",
+                rendered,
+                re.MULTILINE,
+            )
+            self.assertIsNotNone(match)
+            self.assertAlmostEqual(float(match.group(1)), mean_full_tokens_per_doc)
+            match = re.search(
+                r"^mean_think_tokens_per_doc:\s*([0-9]+(?:\.[0-9]+)?)$",
+                rendered,
+                re.MULTILINE,
+            )
+            self.assertIsNotNone(match)
+            self.assertAlmostEqual(float(match.group(1)), mean_think_tokens_per_doc)
             self.assertTrue(summary_json.is_file())
             self.assertTrue(summary_txt.is_file())
 
