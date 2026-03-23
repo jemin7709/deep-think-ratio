@@ -13,6 +13,7 @@ batch_size: auto
 apply_chat_template: true
 predict_only: true
 gen_kwargs:
+  do_sample: true
   temperature: 1.0
   top_p: 1.0
   max_gen_toks: 131072
