@@ -17,11 +17,6 @@ metric_list:
     aggregation: mean
     higher_is_better: true
 generation_kwargs:
-  until:
-    - "Question:"
-    - "</s>"
-    - "<|im_end|>"
-    - "<|eot_id|>"
 repeats: 48
 num_fewshot: 0
 metadata:
