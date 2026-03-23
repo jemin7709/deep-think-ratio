@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 
 from lm_eval.loggers import EvaluationTracker
 
+from run import run_one
 from scripts.eval import save_raw_results, validate_repeats
-from scripts.run_many import run_one
 
 
 class EvalRunnerTest(unittest.TestCase):
@@ -42,9 +42,9 @@ class EvalRunnerTest(unittest.TestCase):
 
 
 class RunManyTest(unittest.TestCase):
-    @patch("scripts.run_many.write_postprocess_artifacts")
-    @patch("scripts.run_many.run_evaluation")
-    @patch("scripts.run_many.build_run_dir")
+    @patch("run.write_postprocess_artifacts")
+    @patch("run.run_evaluation")
+    @patch("run.build_run_dir")
     def test_run_one_orders_steps(
         self,
         build_run_dir_mock,
@@ -71,9 +71,9 @@ class RunManyTest(unittest.TestCase):
         )
         write_postprocess_mock.assert_called_once_with(run_dir=run_dir)
 
-    @patch("scripts.run_many.write_postprocess_artifacts")
-    @patch("scripts.run_many.run_evaluation", side_effect=RuntimeError("boom"))
-    @patch("scripts.run_many.build_run_dir")
+    @patch("run.write_postprocess_artifacts")
+    @patch("run.run_evaluation", side_effect=RuntimeError("boom"))
+    @patch("run.build_run_dir")
     def test_run_one_does_not_postprocess_on_eval_failure(
         self,
         build_run_dir_mock,
@@ -93,9 +93,9 @@ class RunManyTest(unittest.TestCase):
         run_evaluation_mock.assert_called_once()
         write_postprocess_mock.assert_not_called()
 
-    @patch("scripts.run_many.write_postprocess_artifacts")
-    @patch("scripts.run_many.run_evaluation", side_effect=RuntimeError("boom"))
-    @patch("scripts.run_many.build_run_dir")
+    @patch("run.write_postprocess_artifacts")
+    @patch("run.run_evaluation", side_effect=RuntimeError("boom"))
+    @patch("run.build_run_dir")
     def test_run_one_deletes_empty_run_dir_on_failure(
         self,
         build_run_dir_mock,
@@ -119,8 +119,8 @@ class RunManyTest(unittest.TestCase):
             run_evaluation_mock.assert_called_once()
             write_postprocess_mock.assert_not_called()
 
-    @patch("scripts.run_many.write_postprocess_artifacts")
-    @patch("scripts.run_many.build_run_dir")
+    @patch("run.write_postprocess_artifacts")
+    @patch("run.build_run_dir")
     def test_run_one_keeps_partial_artifacts_on_failure(
         self,
         build_run_dir_mock,
@@ -136,7 +136,7 @@ class RunManyTest(unittest.TestCase):
             run_dir.mkdir(parents=True)
             build_run_dir_mock.return_value = run_dir
 
-            with patch("scripts.run_many.run_evaluation", side_effect=write_partial_results):
+            with patch("run.run_evaluation", side_effect=write_partial_results):
                 with self.assertRaisesRegex(RuntimeError, "boom"):
                     run_one(
                         task_config_path=Path("tasks/aime24/aime24_custom.yaml"),
@@ -151,9 +151,9 @@ class RunManyTest(unittest.TestCase):
             )
             write_postprocess_mock.assert_not_called()
 
-    @patch("scripts.run_many.write_postprocess_artifacts")
-    @patch("scripts.run_many.run_evaluation", side_effect=KeyboardInterrupt())
-    @patch("scripts.run_many.build_run_dir")
+    @patch("run.write_postprocess_artifacts")
+    @patch("run.run_evaluation", side_effect=KeyboardInterrupt())
+    @patch("run.build_run_dir")
     def test_run_one_deletes_empty_run_dir_on_keyboard_interrupt(
         self,
         build_run_dir_mock,
