@@ -17,6 +17,7 @@ metric_list:
     aggregation: mean
     higher_is_better: true
 generation_kwargs:
+  until: []
 repeats: 48
 num_fewshot: 0
 metadata:

@@ -2,6 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lm_eval.api.task import TaskConfig
+
 from src.evaluation.common import (
     TaggedYamlLoader,
     build_evaluator_config,
@@ -125,6 +127,17 @@ class RuntimeConfigTest(unittest.TestCase):
                 ]
             ],
         )
+
+    def test_aime24_task_uses_empty_until_instead_of_default_delimiter(self):
+        raw = load_yaml(
+            Path("tasks/aime24/aime24_custom.yaml"),
+            loader=TaggedYamlLoader,
+        )
+        config = TaskConfig(**raw)
+
+        self.assertIsNotNone(config.generation_kwargs)
+        self.assertIn("until", config.generation_kwargs)
+        self.assertEqual(config.generation_kwargs["until"], [])
 
 
 if __name__ == "__main__":
