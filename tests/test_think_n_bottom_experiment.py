@@ -13,7 +13,9 @@ from src.experiment.think_n_bottom import resolve_selected_count
 from src.experiment.think_n_bottom import run_experiment
 
 
-def make_results_payload(*, repeats: int, reasoning_tags: list[list[str]] | None = None) -> dict:
+def make_results_payload(
+    *, repeats: int, reasoning_tags: list[list[str]] | None = None
+) -> dict:
     config: dict[str, object] = {"model_args": {"pretrained": "openai/gpt-oss-120b"}}
     if reasoning_tags is not None:
         config["reasoning_tags"] = reasoning_tags
@@ -53,7 +55,9 @@ def write_run_fixture(
 ) -> None:
     run_dir.mkdir(parents=True)
     (run_dir / "results_2026-03-23T00-00-00.json").write_text(
-        json.dumps(make_results_payload(repeats=repeats, reasoning_tags=reasoning_tags)),
+        json.dumps(
+            make_results_payload(repeats=repeats, reasoning_tags=reasoning_tags)
+        ),
         encoding="utf-8",
     )
     (run_dir / "samples_aime24_custom_2026-03-23T00-00-00.jsonl").write_text(
@@ -88,16 +92,22 @@ class FakeTokenizer:
 class ThinkNBottomExperimentTest(unittest.TestCase):
     def test_resolve_selected_count_uses_fraction_or_explicit_value(self):
         self.assertEqual(
-            resolve_selected_count(repeats=48, bottom_fraction=0.5, selected_count=None),
+            resolve_selected_count(
+                repeats=48, bottom_fraction=0.5, selected_count=None
+            ),
             24,
         )
         self.assertEqual(
             resolve_selected_count(repeats=48, bottom_fraction=0.5, selected_count=7),
             7,
         )
-        with self.assertRaisesRegex(ValueError, "selected_count must be between 1 and repeats"):
+        with self.assertRaisesRegex(
+            ValueError, "selected_count must be between 1 and repeats"
+        ):
             resolve_selected_count(repeats=48, bottom_fraction=0.5, selected_count=0)
-        with self.assertRaisesRegex(ValueError, "bottom_fraction must be in the interval"):
+        with self.assertRaisesRegex(
+            ValueError, "bottom_fraction must be in the interval"
+        ):
             resolve_selected_count(repeats=48, bottom_fraction=1.5, selected_count=None)
 
     def test_build_output_dir_keeps_run_identity_under_experiment_tree(self):
@@ -112,15 +122,22 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
         )
         self.assertEqual(
             output_dir,
-            run_dir
-            / "experiments"
-            / "prefix50_bottom24of48_g0.5_rho0.85",
+            run_dir / "experiments" / "prefix50_bottom24of48_g0.5_rho0.85",
         )
 
     @patch("transformers.AutoTokenizer.from_pretrained", return_value=FakeTokenizer())
-    def test_run_experiment_uses_lower_prefix_dtr_and_saves_rep_metrics(self, _tokenizer_mock):
+    def test_run_experiment_uses_lower_prefix_dtr_and_saves_rep_metrics(
+        self, _tokenizer_mock
+    ):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             sample_rows = [
                 make_sample_row(
                     doc_id=0,
@@ -178,7 +195,14 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
     @patch("transformers.AutoTokenizer.from_pretrained", return_value=FakeTokenizer())
     def test_run_experiment_breaks_dtr_ties_by_repeat_index(self, _tokenizer_mock):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             sample_rows = [
                 make_sample_row(
                     doc_id=0,
@@ -208,7 +232,14 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
     @patch("transformers.AutoTokenizer.from_pretrained", return_value=FakeTokenizer())
     def test_run_experiment_sets_rep_n_zero_for_short_sequences(self, _tokenizer_mock):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             sample_rows = [
                 make_sample_row(
                     doc_id=0,
@@ -237,12 +268,19 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             self.assertEqual(payload["docs"][0]["metrics"]["selected_word_rep_4"], 0.0)
 
     @patch("transformers.AutoTokenizer.from_pretrained", return_value=FakeTokenizer())
-    def test_run_experiment_computes_repetition_after_reasoning_tag_removal(self, _tokenizer_mock):
+    def test_run_experiment_computes_repetition_on_raw_response(self, _tokenizer_mock):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             repeated = (
-                "<|channel|>analysis<|message|>loop loop loop<|end|>"
-                "<|start|>assistant<|channel|>final<|message|>42 once"
+                "<|channel|>analysis<|message|> loop loop loop "
+                "<|end|><|start|>assistant<|channel|>final<|message|>42 once"
             )
             sample_rows = [
                 make_sample_row(
@@ -281,23 +319,32 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             payload = json.loads(summary_json.read_text(encoding="utf-8"))
             rendered = summary_txt.read_text(encoding="utf-8")
             self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [2, 3])
-            self.assertEqual(payload["docs"][0]["metrics"]["full_word_rep_2"], 0.0)
+            self.assertGreater(payload["docs"][0]["metrics"]["full_word_rep_2"], 0.0)
             match = re.search(
                 r"^full_word_rep_2:\s*([0-9]+(?:\.[0-9]+)?)$",
                 rendered,
                 re.MULTILINE,
             )
             self.assertIsNotNone(match)
-            self.assertAlmostEqual(float(match.group(1)), 0.0)
+            self.assertGreater(float(match.group(1)), 0.0)
 
     @patch("transformers.AutoTokenizer.from_pretrained", return_value=FakeTokenizer())
     def test_run_experiment_rejects_non_positive_prefix_len(self, _tokenizer_mock):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             write_run_fixture(
                 run_dir=run_dir,
                 repeats=1,
-                sample_rows=[make_sample_row(doc_id=0, target="42", completions=["42"])],
+                sample_rows=[
+                    make_sample_row(doc_id=0, target="42", completions=["42"])
+                ],
                 matrices={(0, 0): shallow_jsd(1)},
                 num_tokens={(0, 0): 1},
             )

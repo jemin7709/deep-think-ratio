@@ -59,10 +59,15 @@ def seq_rep_n_for_completion(
     level: Level,
     model_name: str,
     reasoning_tags: list[tuple[str, str]] | None = None,
+    strip_reasoning: bool = True,
 ) -> float:
     """Compute seq-rep-n for a single completion."""
-    cleaned = clean_completions([completion], reasoning_tags)[0]
-    symbols = _tokenize_for_level(cleaned, level=level, model_name=model_name)
+    processed = (
+        clean_completions([completion], reasoning_tags)[0]
+        if strip_reasoning
+        else completion
+    )
+    symbols = _tokenize_for_level(processed, level=level, model_name=model_name)
     return _seq_rep_n_from_symbols(symbols, n)
 
 
@@ -73,6 +78,7 @@ def mean_seq_rep_n_for_completions(
     level: Level,
     model_name: str,
     reasoning_tags: list[tuple[str, str]] | None = None,
+    strip_reasoning: bool = True,
 ) -> float:
     """Average seq-rep-n across completions."""
     if not completions:
@@ -85,6 +91,7 @@ def mean_seq_rep_n_for_completions(
             level=level,
             model_name=model_name,
             reasoning_tags=reasoning_tags,
+            strip_reasoning=strip_reasoning,
         )
         for completion in completions
     ]
@@ -99,6 +106,7 @@ def seq_rep_n(
     granularity: Level,
     model_name: str,
     reasoning_tags: list[tuple[str, str]] | None = None,
+    strip_reasoning: bool = True,
 ) -> float:
     """단일 completion의 seq-rep-n 별칭 API."""
     return seq_rep_n_for_completion(
@@ -107,6 +115,7 @@ def seq_rep_n(
         level=granularity,
         model_name=model_name,
         reasoning_tags=reasoning_tags,
+        strip_reasoning=strip_reasoning,
     )
 
 
@@ -117,6 +126,7 @@ def mean_seq_rep_n(
     granularity: Level,
     model_name: str,
     reasoning_tags: list[tuple[str, str]] | None = None,
+    strip_reasoning: bool = True,
 ) -> float:
     """completion 집합 평균 seq-rep-n 별칭 API."""
     return mean_seq_rep_n_for_completions(
@@ -125,4 +135,5 @@ def mean_seq_rep_n(
         level=granularity,
         model_name=model_name,
         reasoning_tags=reasoning_tags,
+        strip_reasoning=strip_reasoning,
     )

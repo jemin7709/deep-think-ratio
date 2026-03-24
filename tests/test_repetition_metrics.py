@@ -80,7 +80,30 @@ class RepetitionMetricsTest(unittest.TestCase):
         cleaned = clean_completions([completion], [("<think>", "</think>")])[0]
         expected_tokens = cleaned.split()
         ngram_count = len(expected_tokens) - 2 + 1
-        expected = 1.0 - len({tuple(expected_tokens[i : i + 2]) for i in range(ngram_count)}) / ngram_count
+        expected = (
+            1.0
+            - len({tuple(expected_tokens[i : i + 2]) for i in range(ngram_count)})
+            / ngram_count
+        )
+        self.assertAlmostEqual(score, expected)
+
+    @patch("src.experiment.repetition_metrics.AutoTokenizer.from_pretrained")
+    def test_reasoning_tags_can_be_kept_in_raw_metric(self, mock_from_pretrained):
+        completion = "<think>noise noise noise</think> x y"
+        mock_from_pretrained.return_value = self.FakeTokenizer(
+            {completion: [9, 1, 1, 1, 8, 7]}
+        )
+
+        score = mean_seq_rep_n_for_completions(
+            [completion],
+            n=2,
+            level="token",
+            model_name="reasoning-model",
+            reasoning_tags=[("<think>", "</think>")],
+            strip_reasoning=False,
+        )
+
+        expected = 1.0 - 4 / 5
         self.assertAlmostEqual(score, expected)
 
 

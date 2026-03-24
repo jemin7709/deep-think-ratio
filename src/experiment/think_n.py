@@ -61,12 +61,15 @@ def build_repetition_metrics(
     metrics: dict[str, float] = {}
     for n in REP_N_VALUES:
         for level in REP_LEVELS:
+            # Repetition is intended to reflect the raw sampled response text,
+            # unlike accuracy metrics that compare the cleaned final answer.
             metrics[f"selected_{level}_rep_{n}"] = mean_seq_rep_n(
                 selected_completions,
                 n=n,
                 granularity=level,
                 model_name=model_name,
                 reasoning_tags=reasoning_tags,
+                strip_reasoning=False,
             )
             metrics[f"full_{level}_rep_{n}"] = mean_seq_rep_n(
                 completions,
@@ -74,6 +77,7 @@ def build_repetition_metrics(
                 granularity=level,
                 model_name=model_name,
                 reasoning_tags=reasoning_tags,
+                strip_reasoning=False,
             )
     return metrics
 
@@ -92,7 +96,9 @@ def resolve_selected_count(
             )
         return selected_count
     if top_fraction <= 0.0 or top_fraction > 1.0:
-        raise ValueError(f"top_fraction must be in the interval (0, 1], got {top_fraction}")
+        raise ValueError(
+            f"top_fraction must be in the interval (0, 1], got {top_fraction}"
+        )
     return max(1, math.ceil(repeats * top_fraction))
 
 
@@ -197,15 +203,21 @@ def build_ranked_repeats(
     for repeat_index, _completion in enumerate(completions):
         key = (doc_id, repeat_index)
         if key not in prefix_rows:
-            raise ValueError(f"missing prefix DTR for doc_id={doc_id}, repeat_index={repeat_index}")
+            raise ValueError(
+                f"missing prefix DTR for doc_id={doc_id}, repeat_index={repeat_index}"
+            )
         prefix_dtr, full_num_tokens = prefix_rows[key]
         ranking_basis.append((repeat_index, prefix_dtr, full_num_tokens))
 
     ranking_basis.sort(key=lambda item: (-item[1], item[0]))
-    selected_repeat_indices = {repeat_index for repeat_index, _, _ in ranking_basis[:selected_count]}
+    selected_repeat_indices = {
+        repeat_index for repeat_index, _, _ in ranking_basis[:selected_count]
+    }
 
     ranked_repeats: list[RepeatRecord] = []
-    for rank, (repeat_index, prefix_dtr, full_num_tokens) in enumerate(ranking_basis, start=1):
+    for rank, (repeat_index, prefix_dtr, full_num_tokens) in enumerate(
+        ranking_basis, start=1
+    ):
         ranked_repeats.append(
             RepeatRecord(
                 repeat_index=repeat_index,
@@ -246,7 +258,9 @@ def build_doc_result(
     selected_completions = [completions[index] for index in selected_repeat_indices]
 
     full_cost = sum(record.full_num_tokens for record in ranked_repeats)
-    prefix_cost = sum(min(prefix_len, record.full_num_tokens) for record in ranked_repeats)
+    prefix_cost = sum(
+        min(prefix_len, record.full_num_tokens) for record in ranked_repeats
+    )
     continuation_cost = sum(
         max(record.full_num_tokens - prefix_len, 0)
         for record in ranked_repeats
@@ -315,7 +329,9 @@ def summarize_doc_results(
         for n in REP_N_VALUES
     )
 
-    metrics = {key: fmean(result.metrics[key] for result in doc_results) for key in metric_keys}
+    metrics = {
+        key: fmean(result.metrics[key] for result in doc_results) for key in metric_keys
+    }
     metrics["num_docs"] = len(doc_results)
     total_full_tokens = sum(result.cost["full_tokens"] for result in doc_results)
     total_think_tokens = sum(result.cost["think_tokens"] for result in doc_results)
