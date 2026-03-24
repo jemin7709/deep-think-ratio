@@ -9,4 +9,4 @@
 # Python Specific Instructions
 
 - Use `uv` for Python.
-- After finishing a task, run `ruff` and `pyrefly` to check and fix code style and static issues.
+- After finishing a task, run `ruff` and `pyrefly` to check and fix code style and static issues. (use `uvx` for both)
