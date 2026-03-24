@@ -6,6 +6,7 @@ from tasks.aime24.utils import (
     configure_runtime_reasoning_tags,
     extract_vote_key,
     process_results,
+    score_maj_at_n,
     score_match,
 )
 
@@ -60,6 +61,10 @@ class Aime24UtilsTest(unittest.TestCase):
         first = extract_vote_key("I think the answer is \\boxed{42}.", "42")
         second = extract_vote_key("x = 42", "42")
         self.assertEqual(first, second)
+
+    def test_score_maj_at_n_groups_symbolically_equivalent_answers(self):
+        score = score_maj_at_n("1/3", ["0.333333", "0.333333", "1/3"], 3)
+        self.assertEqual(score, 1.0)
 
 
 if __name__ == "__main__":

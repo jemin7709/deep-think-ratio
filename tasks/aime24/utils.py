@@ -5,13 +5,14 @@ from pathlib import Path
 from typing import cast
 
 from lighteval.metrics.dynamic_metrics import MultilingualExtractiveMatchMetric
-from lighteval.metrics.metrics_sample import AvgAtN, MajAtN, PassAtK
+from lighteval.metrics.metrics_sample import AvgAtN, PassAtK
 from lighteval.metrics.utils.extractive_match_utils import (
     ExprExtractionConfig,
     LatexExtractionConfig,
     extract_target_from_pred,
     get_extraction_regexes,
 )
+from lighteval.metrics.utils.math_comparison import compare_gold_target
 from lighteval.models.model_output import ModelResponse
 from lighteval.tasks.requests import Doc
 from lighteval.utils.language import Language
@@ -19,6 +20,7 @@ from lighteval.utils.utils import remove_reasoning_tags
 
 
 MATH_EXTRACTION_PRECISION = 6
+MATH_TIMEOUT_SECONDS = 5
 TASK_GOLD = (ExprExtractionConfig(), LatexExtractionConfig())
 TASK_PRED = (ExprExtractionConfig(), LatexExtractionConfig())
 ReasoningTags = list[tuple[str, str]]
@@ -122,19 +124,47 @@ def make_math_matcher() -> MultilingualExtractiveMatchMetric:
         precision=MATH_EXTRACTION_PRECISION,
         fallback_mode="first_match",
         extraction_mode="any_match",
-        timeout_seconds=5,
+        timeout_seconds=MATH_TIMEOUT_SECONDS,
     )
 
 
 def extract_first_canonical_math_answer(text: str) -> str:
+    extracted = extract_math_vote_targets(text)
+    return str(extracted[0]) if extracted else text
+
+
+def extract_math_vote_targets(text: str) -> list[object]:
     extracted = extract_target_from_pred(
         text,
         get_generic_math_pred_extraction_regexes(),
         fallback_mode="first_match",
         extraction_mode="any_match",
-        timeout_seconds=5,
+        timeout_seconds=MATH_TIMEOUT_SECONDS,
     )
-    return str(extracted[0]) if extracted else text
+    return extracted if extracted else [text]
+
+
+def math_vote_targets_match(left: list[object], right: list[object]) -> bool:
+    return compare_gold_target(
+        left,
+        right,
+        precision=MATH_EXTRACTION_PRECISION,
+        timeout_seconds=MATH_TIMEOUT_SECONDS,
+    )
+
+
+def pick_majority_math_completion(completions: list[str]) -> str:
+    majority_groups: list[tuple[list[object], list[str]]] = []
+    for completion in completions:
+        extracted = extract_math_vote_targets(completion)
+        for representative, grouped_completions in majority_groups:
+            if math_vote_targets_match(representative, extracted):
+                grouped_completions.append(completion)
+                break
+        else:
+            majority_groups.append((extracted, [completion]))
+
+    return max(majority_groups, key=lambda group: len(group[1]))[1][0]
 
 
 def score_match(
@@ -192,6 +222,5 @@ def score_maj_at_n(
     reasoning_tags: ReasoningTags | None = None,
 ) -> float:
     cleaned = clean_completions(completions[:n], reasoning_tags)
-    metric = MajAtN(n=n)
-    metric.normalize = extract_first_canonical_math_answer
-    return float(metric.compute(build_doc(target), build_model_response(cleaned)))
+    majority_completion = pick_majority_math_completion(cleaned)
+    return score_match(target, majority_completion)
