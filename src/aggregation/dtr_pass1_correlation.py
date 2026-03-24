@@ -15,6 +15,7 @@ from tasks.aime24.metrics import TASK_NAME, infer_task_name
 from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags, score_match
 
 
+DEFAULT_OUTPUT_DIR_NAME = "dtr_pass1_correlation"
 DEFAULT_PLOT_FILENAME = "dtr_pass1_correlation.png"
 DEFAULT_SUMMARY_FILENAME = "dtr_pass1_correlation.json"
 
@@ -70,6 +71,11 @@ def resolve_output_plot_path(output_plot: Path | None) -> Path | None:
     return candidate.with_suffix(".png")
 
 
+def default_output_dir(run_dir: Path) -> Path:
+    """개별 run의 correlation 산출물을 모으는 기본 디렉터리."""
+    return run_dir / DEFAULT_OUTPUT_DIR_NAME
+
+
 def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path | None, Path]:
     run_dir = args.run_dir.resolve()
     dtr_path = (
@@ -89,11 +95,16 @@ def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path | No
         task_name = infer_task_name(aggregated)
         samples_path = latest_matching_file(run_dir, f"samples_{task_name}_*.jsonl")
 
-    output_plot = resolve_output_plot_path(args.output_plot)
+    output_dir = default_output_dir(run_dir)
+    output_plot = (
+        resolve_output_plot_path(args.output_plot)
+        if args.output_plot is not None
+        else output_dir / DEFAULT_PLOT_FILENAME
+    )
     output_json = (
         args.output_json.resolve()
         if args.output_json is not None
-        else run_dir / DEFAULT_SUMMARY_FILENAME
+        else output_dir / DEFAULT_SUMMARY_FILENAME
     )
     return dtr_path, results_path, samples_path, output_plot, output_json
 

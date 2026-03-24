@@ -4,8 +4,10 @@ import unittest
 from pathlib import Path
 
 from src.aggregation.dtr_pass1_correlation import (
+    DEFAULT_OUTPUT_DIR_NAME,
     DEFAULT_SUMMARY_FILENAME,
     build_title,
+    default_output_dir,
     load_dtr_by_key,
     load_sequence_results,
     make_bins,
@@ -76,7 +78,7 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             results_path = run_dir / "results_2026-03-22T00-00-00.json"
             samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
             dtr_path = dtr_results_path(run_dir)
-            output_path = run_dir / DEFAULT_SUMMARY_FILENAME
+            output_path = default_output_dir(run_dir) / DEFAULT_SUMMARY_FILENAME
 
             results_path.write_text(
                 json.dumps({"config": {"model_args": {"pretrained": "openai/gpt-oss-120b"}}}),
@@ -122,6 +124,7 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
 
             summary = json.loads(output_path.read_text(encoding="utf-8"))
 
+            self.assertEqual(default_output_dir(run_dir), run_dir / DEFAULT_OUTPUT_DIR_NAME)
             self.assertEqual(build_title(run_dir, "aime24_custom", "model", None), f"{run_dir.name} | aime24_custom | model | DTR vs Pass@1")
             self.assertEqual(summary["task"], "aime24_custom")
             self.assertEqual(summary["model"], "openai/gpt-oss-120b")

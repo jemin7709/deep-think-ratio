@@ -54,7 +54,15 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
     def test_discover_summary_paths_recurses_and_skips_aggregate_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            run_summary = root / "aime24_custom" / "model" / "0" / "stamp" / "dtr_pass1_correlation.json"
+            run_summary = (
+                root
+                / "aime24_custom"
+                / "model"
+                / "0"
+                / "stamp"
+                / "dtr_pass1_correlation"
+                / "dtr_pass1_correlation.json"
+            )
             run_summary.parent.mkdir(parents=True)
             write_summary(run_summary, run_dir="/tmp/run-0")
 
