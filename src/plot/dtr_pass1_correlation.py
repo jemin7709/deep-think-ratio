@@ -100,7 +100,9 @@ def plot_to_png(
         draw.line([(plot_left, y), (plot_right, y)], fill=GRID, width=1)
         tick = f"{y_value:.1f}"
         tick_w, tick_h = text_size(tick, tick_font)
-        draw.text((plot_left - tick_w - 14, y - tick_h / 2), tick, fill=TEXT, font=tick_font)
+        draw.text(
+            (plot_left - tick_w - 14, y - tick_h / 2), tick, fill=TEXT, font=tick_font
+        )
 
     for step in range(5):
         x_value = x_low + (x_high - x_low) * step / 4
@@ -131,14 +133,19 @@ def plot_to_png(
     point_radius = 10
     for entry, (x, y) in zip(bins, points, strict=True):
         draw.ellipse(
-            [(x - point_radius, y - point_radius), (x + point_radius, y + point_radius)],
+            [
+                (x - point_radius, y - point_radius),
+                (x + point_radius, y + point_radius),
+            ],
             fill=POINT_FILL,
             outline=POINT_OUTLINE,
             width=2,
         )
         label = f"Q{entry.bin_index}"
         label_w, label_h = text_size(label, note_font)
-        draw.text((x - label_w / 2, y - 34 - label_h / 2), label, fill=TEXT, font=note_font)
+        draw.text(
+            (x - label_w / 2, y - 34 - label_h / 2), label, fill=TEXT, font=note_font
+        )
 
     title_w, _ = text_size(title, title_font)
     draw.text(((width - title_w) / 2, 34), title, fill=TEXT, font=title_font)

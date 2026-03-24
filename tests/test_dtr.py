@@ -99,7 +99,9 @@ class DtrIoTest(unittest.TestCase):
 
     def test_load_samples_expands_repeat_indices_from_current_lm_eval_shape(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            samples_path = Path(tmpdir) / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
+            samples_path = (
+                Path(tmpdir) / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
+            )
             row = sample_row(
                 doc_id=7,
                 prompt="prompt text",
@@ -116,11 +118,15 @@ class DtrIoTest(unittest.TestCase):
                 ],
                 [(7, 0, "resp-0"), (7, 1, "resp-1"), (7, 2, "resp-2")],
             )
-            self.assertTrue(all(sample.prompt_text == "prompt text" for sample in samples))
+            self.assertTrue(
+                all(sample.prompt_text == "prompt text" for sample in samples)
+            )
 
     def test_load_samples_filters_requested_repeat_indices(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            samples_path = Path(tmpdir) / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
+            samples_path = (
+                Path(tmpdir) / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
+            )
             row = sample_row(
                 doc_id=3,
                 prompt="prompt text",
@@ -136,7 +142,9 @@ class DtrIoTest(unittest.TestCase):
 
 
 class DtrComputationTest(unittest.TestCase):
-    def test_tokenize_prompt_and_response_keeps_response_tokens_across_boundary_merge(self):
+    def test_tokenize_prompt_and_response_keeps_response_tokens_across_boundary_merge(
+        self,
+    ):
         class FakeTokenizer:
             def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
                 del add_special_tokens
@@ -180,9 +188,13 @@ class DtrComputationTest(unittest.TestCase):
             compute_dtr_from_jsd_matrix(torch.ones((2, 3)), g=-0.1, rho=0.85)
         with self.assertRaisesRegex(ValueError, r"g must be in the interval \[0, 1\]"):
             compute_dtr_from_jsd_matrix(torch.ones((2, 3)), g=1.1, rho=0.85)
-        with self.assertRaisesRegex(ValueError, r"rho must be in the interval \(0, 1\]"):
+        with self.assertRaisesRegex(
+            ValueError, r"rho must be in the interval \(0, 1\]"
+        ):
             compute_dtr_from_jsd_matrix(torch.ones((2, 3)), g=0.5, rho=0.0)
-        with self.assertRaisesRegex(ValueError, r"rho must be in the interval \(0, 1\]"):
+        with self.assertRaisesRegex(
+            ValueError, r"rho must be in the interval \(0, 1\]"
+        ):
             compute_dtr_from_jsd_matrix(torch.ones((2, 3)), g=0.5, rho=1.2)
 
     def test_dtr_module_rejects_empty_matrix_dir(self):

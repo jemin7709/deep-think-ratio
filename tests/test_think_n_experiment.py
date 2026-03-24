@@ -93,7 +93,9 @@ class ThinkNExperimentTest(unittest.TestCase):
             resolve_selected_count(repeats=48, top_fraction=0.5, selected_count=7),
             7,
         )
-        with self.assertRaisesRegex(ValueError, "selected_count must be between 1 and repeats"):
+        with self.assertRaisesRegex(
+            ValueError, "selected_count must be between 1 and repeats"
+        ):
             resolve_selected_count(repeats=48, top_fraction=0.5, selected_count=0)
         with self.assertRaisesRegex(ValueError, "top_fraction must be in the interval"):
             resolve_selected_count(repeats=48, top_fraction=0.0, selected_count=None)
@@ -110,14 +112,19 @@ class ThinkNExperimentTest(unittest.TestCase):
         )
         self.assertEqual(
             output_dir,
-            run_dir
-            / "experiments"
-            / "prefix50_top24of48_g0.5_rho0.85",
+            run_dir / "experiments" / "prefix50_top24of48_g0.5_rho0.85",
         )
 
     def test_run_experiment_uses_prefix_dtr_and_saves_summary_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             sample_rows = [
                 make_sample_row(
                     doc_id=0,
@@ -169,7 +176,9 @@ class ThinkNExperimentTest(unittest.TestCase):
                 "mean_think_tokens_per_doc",
                 rendered,
             )
-            mean_full_tokens_per_doc = payload["summary"]["cost"]["mean_full_tokens_per_doc"]
+            mean_full_tokens_per_doc = payload["summary"]["cost"][
+                "mean_full_tokens_per_doc"
+            ]
             mean_think_tokens_per_doc = payload["summary"]["cost"][
                 "mean_think_tokens_per_doc"
             ]
@@ -198,7 +207,14 @@ class ThinkNExperimentTest(unittest.TestCase):
 
     def test_run_experiment_cost_counts_short_prefixes_correctly(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             sample_rows = [
                 make_sample_row(
                     doc_id=0,
@@ -240,7 +256,14 @@ class ThinkNExperimentTest(unittest.TestCase):
 
     def test_run_experiment_breaks_dtr_ties_by_repeat_index(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             sample_rows = [
                 make_sample_row(
                     doc_id=0,
@@ -274,7 +297,14 @@ class ThinkNExperimentTest(unittest.TestCase):
 
     def test_run_experiment_rejects_missing_matrix_entries(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             sample_rows = [
                 make_sample_row(
                     doc_id=0,
@@ -301,11 +331,20 @@ class ThinkNExperimentTest(unittest.TestCase):
 
     def test_run_experiment_rejects_non_positive_prefix_len(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
             write_run_fixture(
                 run_dir=run_dir,
                 repeats=1,
-                sample_rows=[make_sample_row(doc_id=0, target="42", completions=["42"])],
+                sample_rows=[
+                    make_sample_row(doc_id=0, target="42", completions=["42"])
+                ],
                 matrices={(0, 0): deep_jsd(1)},
                 num_tokens={(0, 0): 1},
             )

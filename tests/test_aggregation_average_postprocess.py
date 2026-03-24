@@ -6,7 +6,18 @@ from pathlib import Path
 from src.aggregation.average_postprocess import build_output, find_sources
 
 
-def write_postprocess(path: Path, *, run_dir: str, task: str = "aime24_custom", model: str = "openai/gpt-oss-120b", repeats: int = 4, k: int = 1, pass_at_1: float = 0.5, avg_at_n: float = 0.5, maj_at_n: float = 0.75) -> None:
+def write_postprocess(
+    path: Path,
+    *,
+    run_dir: str,
+    task: str = "aime24_custom",
+    model: str = "openai/gpt-oss-120b",
+    repeats: int = 4,
+    k: int = 1,
+    pass_at_1: float = 0.5,
+    avg_at_n: float = 0.5,
+    maj_at_n: float = 0.75,
+) -> None:
     payload = {
         "run_dir": run_dir,
         "model": model,
@@ -52,8 +63,12 @@ class AveragePostprocessTest(unittest.TestCase):
             path_a = root / "postprocess_a.json"
             path_b = root / "nested" / "postprocess_b.json"
             path_b.parent.mkdir()
-            write_postprocess(path_a, run_dir="/tmp/run-a", pass_at_1=0.4, avg_at_n=0.4, maj_at_n=0.6)
-            write_postprocess(path_b, run_dir="/tmp/run-b", pass_at_1=0.8, avg_at_n=0.8, maj_at_n=1.0)
+            write_postprocess(
+                path_a, run_dir="/tmp/run-a", pass_at_1=0.4, avg_at_n=0.4, maj_at_n=0.6
+            )
+            write_postprocess(
+                path_b, run_dir="/tmp/run-b", pass_at_1=0.8, avg_at_n=0.8, maj_at_n=1.0
+            )
 
             payloads = [
                 json.loads(path_a.read_text(encoding="utf-8")),
@@ -66,7 +81,9 @@ class AveragePostprocessTest(unittest.TestCase):
             self.assertAlmostEqual(output["metrics_mean"]["pass@1"], 0.6)
             self.assertAlmostEqual(output["metrics_mean"]["avg@4"], 0.6)
             self.assertAlmostEqual(output["metrics_mean"]["maj@4"], 0.8)
-            self.assertAlmostEqual(output["metrics_stddev"]["pass@1"], 0.282842712474619)
+            self.assertAlmostEqual(
+                output["metrics_stddev"]["pass@1"], 0.282842712474619
+            )
             self.assertNotIn("num_docs", output["metrics_stddev"])
             self.assertEqual(
                 [entry["run_dir"] for entry in output["aggregation"]["source_metrics"]],
@@ -94,7 +111,9 @@ class AveragePostprocessTest(unittest.TestCase):
         }
 
         with self.assertRaisesRegex(ValueError, "metric keys"):
-            build_output(Path("/tmp"), [Path("/tmp/a"), Path("/tmp/b")], [payload_a, payload_b])
+            build_output(
+                Path("/tmp"), [Path("/tmp/a"), Path("/tmp/b")], [payload_a, payload_b]
+            )
 
 
 if __name__ == "__main__":

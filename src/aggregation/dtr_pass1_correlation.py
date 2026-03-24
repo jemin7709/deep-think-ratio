@@ -9,10 +9,18 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean
 
-from src.dtr.jsd_utils import dtr_results_path, latest_matching_file, load_aggregated_results
+from src.dtr.jsd_utils import (
+    dtr_results_path,
+    latest_matching_file,
+    load_aggregated_results,
+)
 from src.plot.dtr_pass1_correlation import plot_to_png
 from tasks.aime24.metrics import TASK_NAME, infer_task_name
-from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags, score_match
+from tasks.aime24.utils import (
+    resolve_model_identity,
+    resolve_reasoning_tags,
+    score_match,
+)
 
 
 DEFAULT_OUTPUT_DIR_NAME = "dtr_pass1_correlation"
@@ -82,7 +90,9 @@ def default_output_dir(run_dir: Path) -> Path:
     return run_dir / DEFAULT_OUTPUT_DIR_NAME
 
 
-def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path | None, Path]:
+def resolve_paths(
+    args: argparse.Namespace,
+) -> tuple[Path, Path, Path, Path | None, Path]:
     run_dir = args.run_dir.resolve()
     dtr_path = (
         args.dtr_path.resolve()
@@ -183,7 +193,9 @@ def make_bins(rows: list[SequenceResult], num_bins: int) -> list[BinSummary]:
     if num_bins <= 0:
         raise ValueError(f"num_bins must be positive, got {num_bins}")
     if len(rows) < num_bins:
-        raise ValueError(f"need at least {num_bins} rows for {num_bins} bins, got {len(rows)}")
+        raise ValueError(
+            f"need at least {num_bins} rows for {num_bins} bins, got {len(rows)}"
+        )
 
     base_size, remainder = divmod(len(rows), num_bins)
     bins: list[BinSummary] = []

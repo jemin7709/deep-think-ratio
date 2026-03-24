@@ -112,15 +112,21 @@ def build_ranked_repeats(
     for repeat_index, _completion in enumerate(completions):
         key = (doc_id, repeat_index)
         if key not in prefix_rows:
-            raise ValueError(f"missing prefix DTR for doc_id={doc_id}, repeat_index={repeat_index}")
+            raise ValueError(
+                f"missing prefix DTR for doc_id={doc_id}, repeat_index={repeat_index}"
+            )
         prefix_dtr, full_num_tokens = prefix_rows[key]
         ranking_basis.append((repeat_index, prefix_dtr, full_num_tokens))
 
     ranking_basis.sort(key=lambda item: (item[1], item[0]))
-    selected_repeat_indices = {repeat_index for repeat_index, _, _ in ranking_basis[:selected_count]}
+    selected_repeat_indices = {
+        repeat_index for repeat_index, _, _ in ranking_basis[:selected_count]
+    }
 
     ranked_repeats: list[RepeatRecord] = []
-    for rank, (repeat_index, prefix_dtr, full_num_tokens) in enumerate(ranking_basis, start=1):
+    for rank, (repeat_index, prefix_dtr, full_num_tokens) in enumerate(
+        ranking_basis, start=1
+    ):
         ranked_repeats.append(
             RepeatRecord(
                 repeat_index=repeat_index,
@@ -161,7 +167,9 @@ def build_doc_result(
     selected_completions = [completions[index] for index in selected_repeat_indices]
 
     full_cost = sum(record.full_num_tokens for record in ranked_repeats)
-    prefix_cost = sum(min(prefix_len, record.full_num_tokens) for record in ranked_repeats)
+    prefix_cost = sum(
+        min(prefix_len, record.full_num_tokens) for record in ranked_repeats
+    )
     continuation_cost = sum(
         max(record.full_num_tokens - prefix_len, 0)
         for record in ranked_repeats
@@ -231,8 +239,7 @@ def summarize_doc_results(
     )
 
     metrics = {
-        key: fmean(result.metrics[key] for result in doc_results)
-        for key in metric_keys
+        key: fmean(result.metrics[key] for result in doc_results) for key in metric_keys
     }
     metrics["num_docs"] = len(doc_results)
 

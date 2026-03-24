@@ -49,7 +49,12 @@ def resolve_model_identity(aggregated: dict, run_dir: Path) -> str:
 
 
 def build_gpt_oss_reasoning_tags() -> ReasoningTags:
-    return [("<|channel|>analysis<|message|>", "<|end|><|start|>assistant<|channel|>final<|message|>")]
+    return [
+        (
+            "<|channel|>analysis<|message|>",
+            "<|end|><|start|>assistant<|channel|>final<|message|>",
+        )
+    ]
 
 
 def normalize_reasoning_tags(raw: object) -> ReasoningTags | None:
@@ -77,7 +82,9 @@ def resolve_reasoning_tags(aggregated: dict) -> ReasoningTags | None:
 def process_results(doc: dict, results: list[str]) -> dict[str, int]:
     answer_key = next(key for key in doc if key.lower() == "answer")
     completion = str(results[0])
-    score = score_match(str(doc[answer_key]), completion, reasoning_tags=RUNTIME_REASONING_TAGS)
+    score = score_match(
+        str(doc[answer_key]), completion, reasoning_tags=RUNTIME_REASONING_TAGS
+    )
     return {"exact_match": int(score)}
 
 
@@ -174,7 +181,9 @@ def score_match(
     reasoning_tags: ReasoningTags | None = None,
 ) -> float:
     cleaned = clean_completions([completion], reasoning_tags)
-    return float(make_math_matcher().compute(build_doc(target), build_model_response(cleaned)))
+    return float(
+        make_math_matcher().compute(build_doc(target), build_model_response(cleaned))
+    )
 
 
 def score_avg_at_n(

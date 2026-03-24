@@ -221,11 +221,15 @@ def write_aggregated_json(
     return output_path
 
 
-def build_title(summaries: list[SourceSummary], source_count: int, user_title: str | None) -> str:
+def build_title(
+    summaries: list[SourceSummary], source_count: int, user_title: str | None
+) -> str:
     if user_title is not None:
         return user_title
     first = summaries[0]
-    return f"{first.task} | {first.model} | Averaged DTR vs Pass@1 ({source_count} runs)"
+    return (
+        f"{first.task} | {first.model} | Averaged DTR vs Pass@1 ({source_count} runs)"
+    )
 
 
 def print_summary(aggregated_bins: list[AggregatedBin], aggregated_json: Path) -> None:

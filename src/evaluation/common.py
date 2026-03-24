@@ -124,7 +124,10 @@ def load_model_settings(model_config_path: Path) -> ModelSettings:
     if not isinstance(model_args_raw, dict):
         raise ValueError("model_args must be a mapping")
     model_args = dict(model_args_raw)
-    if not isinstance(model_args.get("pretrained"), str) or not model_args["pretrained"]:
+    if (
+        not isinstance(model_args.get("pretrained"), str)
+        or not model_args["pretrained"]
+    ):
         raise ValueError("model_args.pretrained must be a non-empty string")
     chat_template_args = model_args.get("chat_template_args")
     if chat_template_args is not None and not isinstance(chat_template_args, dict):

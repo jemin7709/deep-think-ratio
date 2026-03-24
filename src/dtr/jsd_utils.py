@@ -101,7 +101,11 @@ def load_samples(
             row = json.loads(line)
             prompt_text = _prompt_text_from_arguments(row["arguments"])
             all_responses = [str(response) for response in row["resps"][0]]
-            indices = list(range(len(all_responses))) if repeat_indices is None else repeat_indices
+            indices = (
+                list(range(len(all_responses)))
+                if repeat_indices is None
+                else repeat_indices
+            )
 
             for repeat_index in indices:
                 samples.append(
@@ -152,9 +156,13 @@ def jsd_output_dir(
     hidden_state_mode: HiddenStateMode = DEFAULT_HIDDEN_STATE_MODE,
     token_block_size: int = DEFAULT_TOKEN_BLOCK_SIZE,
 ) -> Path:
-    return run_dir / "jsd_matrices" / jsd_cache_dir_name(
-        hidden_state_mode=hidden_state_mode,
-        token_block_size=token_block_size,
+    return (
+        run_dir
+        / "jsd_matrices"
+        / jsd_cache_dir_name(
+            hidden_state_mode=hidden_state_mode,
+            token_block_size=token_block_size,
+        )
     )
 
 
@@ -175,7 +183,10 @@ def dtr_results_path(
     rho: float = DEFAULT_RHO,
 ) -> Path:
     """run dir 기준 기본 DTR JSON 경로."""
-    return dtr_output_dir(run_dir) / f"dtr_g{_format_path_float(g)}_rho{_format_path_float(rho)}.json"
+    return (
+        dtr_output_dir(run_dir)
+        / f"dtr_g{_format_path_float(g)}_rho{_format_path_float(rho)}.json"
+    )
 
 
 def validate_dtr_inputs(
@@ -366,7 +377,9 @@ def compute_jsd_matrix_from_model(
                     else:
                         intermediate_hidden_state_chunk.append(normed[0][0])
             else:
-                intermediate_hidden_state_chunk = [hs[0] for hs in out.hidden_states[1:-1]]
+                intermediate_hidden_state_chunk = [
+                    hs[0] for hs in out.hidden_states[1:-1]
+                ]
 
             jsd_chunk = compute_jsd_matrix(
                 intermediate_hidden_states=intermediate_hidden_state_chunk,

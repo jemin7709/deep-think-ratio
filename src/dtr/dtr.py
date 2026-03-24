@@ -68,7 +68,9 @@ def main() -> None:
         hidden_state_mode=args.hidden_state_mode,
         token_block_size=args.token_block_size,
     )
-    output_path = args.output_path or dtr_results_path(args.run_dir, g=args.g, rho=args.rho)
+    output_path = args.output_path or dtr_results_path(
+        args.run_dir, g=args.g, rho=args.rho
+    )
 
     matrix_paths = sorted(matrix_dir.glob("doc*_rep*.pt"))
     if not matrix_paths:

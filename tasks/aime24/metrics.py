@@ -51,7 +51,9 @@ def infer_task_name(aggregated: dict) -> str:
         if len(keys) == 1:
             return keys[0]
 
-    raise ValueError("could not infer task name from aggregated results; pass --task explicitly")
+    raise ValueError(
+        "could not infer task name from aggregated results; pass --task explicitly"
+    )
 
 
 def infer_repeats(aggregated: dict, task_name: str) -> int:
@@ -65,7 +67,11 @@ def infer_repeats(aggregated: dict, task_name: str) -> int:
 
 def load_samples(run_dir: Path, task_name: str) -> list[dict]:
     sample_path = latest_file(run_dir, f"samples_{task_name}_*.jsonl")
-    return [json.loads(line) for line in sample_path.read_text().splitlines() if line.strip()]
+    return [
+        json.loads(line)
+        for line in sample_path.read_text().splitlines()
+        if line.strip()
+    ]
 
 
 def summarize_run(
@@ -100,8 +106,12 @@ def summarize_run(
         metric_values["pass"].append(
             score_pass_at_k(target, completions, expected_n, k, reasoning_tags)
         )
-        metric_values["avg"].append(score_avg_at_n(target, completions, expected_n, reasoning_tags))
-        metric_values["maj"].append(score_maj_at_n(target, completions, expected_n, reasoning_tags))
+        metric_values["avg"].append(
+            score_avg_at_n(target, completions, expected_n, reasoning_tags)
+        )
+        metric_values["maj"].append(
+            score_maj_at_n(target, completions, expected_n, reasoning_tags)
+        )
 
     num_docs = len(samples_by_doc_id)
     return {
@@ -182,7 +192,9 @@ def write_postprocess_artifacts(
     repeats = infer_repeats(aggregated, resolved_task_name)
     samples = load_samples(run_dir, resolved_task_name)
     reasoning_tags = resolve_reasoning_tags(aggregated)
-    summary = summarize_run(samples, k=k, expected_n=repeats, reasoning_tags=reasoning_tags)
+    summary = summarize_run(
+        samples, k=k, expected_n=repeats, reasoning_tags=reasoning_tags
+    )
     payload = build_postprocess_payload(
         run_dir,
         aggregated,

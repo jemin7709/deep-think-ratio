@@ -47,7 +47,9 @@ class Aime24UtilsTest(unittest.TestCase):
         )
 
     def test_clean_completions_removes_think_tags(self):
-        completions = ["<think>reasoning</think>Therefore, the final answer is \\boxed{42}."]
+        completions = [
+            "<think>reasoning</think>Therefore, the final answer is \\boxed{42}."
+        ]
         self.assertEqual(
             clean_completions(completions, [("<think>", "</think>")]),
             ["Therefore, the final answer is \\boxed{42}."],

@@ -80,7 +80,9 @@ class RunManyTest(unittest.TestCase):
         run_evaluation_mock,
         write_postprocess_mock,
     ):
-        build_run_dir_mock.return_value = Path("/tmp/results/aime24_custom/model/7/stamp")
+        build_run_dir_mock.return_value = Path(
+            "/tmp/results/aime24_custom/model/7/stamp"
+        )
 
         with self.assertRaisesRegex(RuntimeError, "boom"):
             run_one(
@@ -103,7 +105,9 @@ class RunManyTest(unittest.TestCase):
         write_postprocess_mock,
     ):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            run_dir = (
+                Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            )
             run_dir.mkdir(parents=True)
             build_run_dir_mock.return_value = run_dir
 
@@ -128,11 +132,15 @@ class RunManyTest(unittest.TestCase):
     ):
         def write_partial_results(**kwargs):
             run_dir = kwargs["run_dir"]
-            (run_dir / "results_2026-03-22T00-00-00.json").write_text("{}\n", encoding="utf-8")
+            (run_dir / "results_2026-03-22T00-00-00.json").write_text(
+                "{}\n", encoding="utf-8"
+            )
             raise RuntimeError("boom")
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            run_dir = (
+                Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            )
             run_dir.mkdir(parents=True)
             build_run_dir_mock.return_value = run_dir
 
@@ -146,9 +154,7 @@ class RunManyTest(unittest.TestCase):
                     )
 
             self.assertTrue(run_dir.exists())
-            self.assertTrue(
-                (run_dir / "results_2026-03-22T00-00-00.json").is_file()
-            )
+            self.assertTrue((run_dir / "results_2026-03-22T00-00-00.json").is_file())
             write_postprocess_mock.assert_not_called()
 
     @patch("run.write_postprocess_artifacts")
@@ -161,7 +167,9 @@ class RunManyTest(unittest.TestCase):
         write_postprocess_mock,
     ):
         with tempfile.TemporaryDirectory() as tmpdir:
-            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            run_dir = (
+                Path(tmpdir) / "results" / "aime24_custom" / "model" / "7" / "stamp"
+            )
             run_dir.mkdir(parents=True)
             build_run_dir_mock.return_value = run_dir
 

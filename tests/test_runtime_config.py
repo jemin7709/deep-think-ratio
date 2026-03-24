@@ -62,9 +62,15 @@ class RuntimeConfigTest(unittest.TestCase):
             )
             self.assertEqual(
                 run_dir,
-                Path(tmpdir) / "aime24_custom" / "gpt-oss-120b" / "7" / "20260321T000000Z",
+                Path(tmpdir)
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "7"
+                / "20260321T000000Z",
             )
-            self.assertEqual(build_tracker_output_path(run_dir), run_dir / "results.json")
+            self.assertEqual(
+                build_tracker_output_path(run_dir), run_dir / "results.json"
+            )
 
     def test_build_evaluator_config_uses_vllm_backend_and_injects_seed(self):
         task_settings = load_task_settings(Path("tasks/aime24/aime24_custom.yaml"))

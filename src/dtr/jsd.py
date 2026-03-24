@@ -26,7 +26,9 @@ from src.dtr.jsd_utils import tokenize_prompt_and_response
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="run dir 기준 JSD matrix 캐시 생성")
-    parser.add_argument("run_dir", type=Path, help="results/<task>/<model>/<seed>/<timestamp>")
+    parser.add_argument(
+        "run_dir", type=Path, help="results/<task>/<model>/<seed>/<timestamp>"
+    )
     parser.add_argument(
         "--task",
         type=str,
@@ -40,7 +42,9 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="추출할 repeat index 목록 (생략 시 전체)",
     )
-    parser.add_argument("--token-block-size", type=int, default=DEFAULT_TOKEN_BLOCK_SIZE)
+    parser.add_argument(
+        "--token-block-size", type=int, default=DEFAULT_TOKEN_BLOCK_SIZE
+    )
     parser.add_argument(
         "--hidden-state-mode",
         type=str,
@@ -259,7 +263,9 @@ def render_existing_heatmaps(
 
         doc_id = int(payload["doc_id"])
         repeat_index = int(payload["repeat_index"])
-        response_token_ids = torch.as_tensor(payload["response_token_ids"], dtype=torch.long)
+        response_token_ids = torch.as_tensor(
+            payload["response_token_ids"], dtype=torch.long
+        )
         jsd_matrix = torch.as_tensor(payload["jsd_matrix"])
         hidden_state_mode = resolve_hidden_state_mode(
             payload.get("hidden_state_mode", "normed_normed")

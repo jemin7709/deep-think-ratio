@@ -26,7 +26,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def save_raw_results(results: dict, tracker: EvaluationTracker) -> dict[str, list[dict]]:
+def save_raw_results(
+    results: dict, tracker: EvaluationTracker
+) -> dict[str, list[dict]]:
     samples = results.pop("samples")
     tracker.save_results_aggregated(results=results, samples=samples)
     for task_name, task_samples in samples.items():
@@ -87,9 +89,7 @@ def run_evaluation(
         rewrite_requests_cache=config.cache_requests.get(
             "rewrite_requests_cache", False
         ),
-        delete_requests_cache=config.cache_requests.get(
-            "delete_requests_cache", False
-        ),
+        delete_requests_cache=config.cache_requests.get("delete_requests_cache", False),
         limit=config.limit,
         samples=config.samples,
         check_integrity=config.check_integrity,

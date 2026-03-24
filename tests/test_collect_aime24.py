@@ -109,12 +109,16 @@ class CollectAime24Test(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            postprocess_path, summary_path = write_postprocess_artifacts(run_dir=run_dir)
+            postprocess_path, summary_path = write_postprocess_artifacts(
+                run_dir=run_dir
+            )
 
             payload = json.loads(postprocess_path.read_text(encoding="utf-8"))
             rendered = summary_path.read_text(encoding="utf-8")
 
-            self.assertEqual(postprocess_path.name, "postprocess_k1_2026-03-21T00-00-00.json")
+            self.assertEqual(
+                postprocess_path.name, "postprocess_k1_2026-03-21T00-00-00.json"
+            )
             self.assertEqual(summary_path.name, "summary_k1_2026-03-21T00-00-00.txt")
             self.assertEqual(payload["model"], "openai/gpt-oss-120b")
             self.assertEqual(payload["metrics"]["avg@4"], 0.5)

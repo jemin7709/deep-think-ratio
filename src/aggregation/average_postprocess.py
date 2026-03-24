@@ -37,7 +37,9 @@ def find_sources(input_path: Path) -> tuple[list[Path], Path]:
 
     if input_path.is_file():
         if input_path.name == OUTPUT_FILENAME:
-            raise ValueError(f"{OUTPUT_FILENAME} is an aggregation output, not a source input")
+            raise ValueError(
+                f"{OUTPUT_FILENAME} is an aggregation output, not a source input"
+            )
         return [input_path], input_path.parent
 
     sources = sorted(
@@ -81,8 +83,7 @@ def _mean_by_key(
 ) -> dict[str, float]:
     keys = _metric_keys(payloads[0], section)
     return {
-        key: fmean(float(payload[section][key]) for payload in payloads)
-        for key in keys
+        key: fmean(float(payload[section][key]) for payload in payloads) for key in keys
     }
 
 
@@ -116,12 +117,16 @@ def build_output(
         "repeats": int(first["repeats"]),
         "k": int(first["k"]),
         "source_count": len(sources),
-        "num_docs_per_source": [int(payload["metrics"]["num_docs"]) for payload in payloads],
+        "num_docs_per_source": [
+            int(payload["metrics"]["num_docs"]) for payload in payloads
+        ],
         "metrics_mean": _mean_by_key(payloads, "metrics"),
         "metrics_stddev": _stddev_by_metric(payloads),
         "aggregation": {
             "input_path": str(input_path),
-            "mode": "single_postprocess_file" if len(sources) == 1 else "directory_tree",
+            "mode": "single_postprocess_file"
+            if len(sources) == 1
+            else "directory_tree",
             "source_paths": [str(path) for path in sources],
             "source_metrics": list(_iter_source_metrics(payloads)),
         },

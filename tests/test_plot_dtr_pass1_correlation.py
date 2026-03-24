@@ -38,18 +38,22 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
                 {
                     "doc_id": 0,
                     "target": "42",
-                    "resps": [[
-                        gpt_oss_completion("r1", "\\boxed{42}"),
-                        gpt_oss_completion("r2", "\\boxed{0}"),
-                    ]],
+                    "resps": [
+                        [
+                            gpt_oss_completion("r1", "\\boxed{42}"),
+                            gpt_oss_completion("r2", "\\boxed{0}"),
+                        ]
+                    ],
                 },
                 {
                     "doc_id": 1,
                     "target": "7",
-                    "resps": [[
-                        gpt_oss_completion("r3", "\\boxed{7}"),
-                        gpt_oss_completion("r4", "\\boxed{7}"),
-                    ]],
+                    "resps": [
+                        [
+                            gpt_oss_completion("r3", "\\boxed{7}"),
+                            gpt_oss_completion("r4", "\\boxed{7}"),
+                        ]
+                    ],
                 },
             ]
             samples_path.write_text(
@@ -70,8 +74,16 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             )
 
             self.assertEqual(
-                [(row.doc_id, row.repeat_index, row.dtr, row.pass_at_1) for row in sequence_rows],
-                [(0, 0, 0.1, 1.0), (0, 1, 0.3, 0.0), (1, 0, 0.6, 1.0), (1, 1, 0.8, 1.0)],
+                [
+                    (row.doc_id, row.repeat_index, row.dtr, row.pass_at_1)
+                    for row in sequence_rows
+                ],
+                [
+                    (0, 0, 0.1, 1.0),
+                    (0, 1, 0.3, 0.0),
+                    (1, 0, 0.6, 1.0),
+                    (1, 1, 0.8, 1.0),
+                ],
             )
 
     def test_make_bins_and_summary_json_match_expected_payload(self):
@@ -83,7 +95,9 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             output_path = default_output_dir(run_dir) / summary_filename(2)
 
             results_path.write_text(
-                json.dumps({"config": {"model_args": {"pretrained": "openai/gpt-oss-120b"}}}),
+                json.dumps(
+                    {"config": {"model_args": {"pretrained": "openai/gpt-oss-120b"}}}
+                ),
                 encoding="utf-8",
             )
             samples_path.write_text("", encoding="utf-8")
@@ -126,8 +140,13 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
 
             summary = json.loads(output_path.read_text(encoding="utf-8"))
 
-            self.assertEqual(default_output_dir(run_dir), run_dir / DEFAULT_OUTPUT_DIR_NAME)
-            self.assertEqual(build_title(run_dir, "aime24_custom", "model", None), f"{run_dir.name} | aime24_custom | model | DTR vs Pass@1")
+            self.assertEqual(
+                default_output_dir(run_dir), run_dir / DEFAULT_OUTPUT_DIR_NAME
+            )
+            self.assertEqual(
+                build_title(run_dir, "aime24_custom", "model", None),
+                f"{run_dir.name} | aime24_custom | model | DTR vs Pass@1",
+            )
             self.assertEqual(summary["task"], "aime24_custom")
             self.assertEqual(summary["model"], "openai/gpt-oss-120b")
             self.assertEqual(summary["num_sequences"], 4)
@@ -146,7 +165,9 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             run_dir = Path(tmpdir)
             results_path = run_dir / "results_2026-03-22T00-00-00.json"
             samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
-            results_path.write_text(json.dumps({"results": {"aime24_custom": {}}}), encoding="utf-8")
+            results_path.write_text(
+                json.dumps({"results": {"aime24_custom": {}}}), encoding="utf-8"
+            )
             samples_path.write_text("", encoding="utf-8")
             args = type(
                 "Args",
@@ -162,10 +183,16 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
                 },
             )()
 
-            _dtr_path, _results_path, _samples_path, output_plot, output_json = resolve_paths(args)
+            _dtr_path, _results_path, _samples_path, output_plot, output_json = (
+                resolve_paths(args)
+            )
 
-            self.assertEqual(output_plot, default_output_dir(run_dir) / plot_filename(7))
-            self.assertEqual(output_json, default_output_dir(run_dir) / summary_filename(7))
+            self.assertEqual(
+                output_plot, default_output_dir(run_dir) / plot_filename(7)
+            )
+            self.assertEqual(
+                output_json, default_output_dir(run_dir) / summary_filename(7)
+            )
 
     def test_load_sequence_results_rejects_unmatched_dtr_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -187,18 +214,22 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             {
                 "doc_id": 0,
                 "target": "42",
-                "resps": [[
-                    gpt_oss_completion("r1", "\\boxed{42}"),
-                    gpt_oss_completion("r2", "\\boxed{0}"),
-                ]],
+                "resps": [
+                    [
+                        gpt_oss_completion("r1", "\\boxed{42}"),
+                        gpt_oss_completion("r2", "\\boxed{0}"),
+                    ]
+                ],
             },
             {
                 "doc_id": 1,
                 "target": "7",
-                "resps": [[
-                    gpt_oss_completion("r3", "\\boxed{7}"),
-                    gpt_oss_completion("r4", "\\boxed{7}"),
-                ]],
+                "resps": [
+                    [
+                        gpt_oss_completion("r3", "\\boxed{7}"),
+                        gpt_oss_completion("r4", "\\boxed{7}"),
+                    ]
+                ],
             },
         ]
         samples_path.write_text(

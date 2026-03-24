@@ -40,7 +40,10 @@ def choose_cell_width(
     if user_value is not None:
         return user_value
     widest_rotated_ink = max(
-        (rotated_text_size(label, font, angle=TOKEN_LABEL_ANGLE)[0] for label in token_labels),
+        (
+            rotated_text_size(label, font, angle=TOKEN_LABEL_ANGLE)[0]
+            for label in token_labels
+        ),
         default=0,
     )
     width_by_token_count = min(24, math.ceil(1400 / max(num_tokens, 1)))
@@ -123,7 +126,9 @@ def draw_colorbar(
 
     draw.rectangle([(x0, y0), (x0 + width, y0 + height)], outline=(80, 80, 80))
     draw.text((x0 + width + 10, y0 - 8), f"{vmax:.4f}", font=font, fill=(0, 0, 0))
-    draw.text((x0 + width + 10, y0 + height - 8), f"{vmin:.4f}", font=font, fill=(0, 0, 0))
+    draw.text(
+        (x0 + width + 10, y0 + height - 8), f"{vmin:.4f}", font=font, fill=(0, 0, 0)
+    )
     draw_rotated_text(
         image,
         "JSD",
@@ -156,11 +161,17 @@ def render_heatmap(
     resolved_cell_height = choose_cell_height(num_layers, cell_height)
 
     max_token_label_height = max(
-        (rotated_text_size(label, font, angle=TOKEN_LABEL_ANGLE)[1] for label in token_labels),
+        (
+            rotated_text_size(label, font, angle=TOKEN_LABEL_ANGLE)[1]
+            for label in token_labels
+        ),
         default=0,
     )
     max_token_label_width = max(
-        (rotated_text_size(label, font, angle=TOKEN_LABEL_ANGLE)[0] for label in token_labels),
+        (
+            rotated_text_size(label, font, angle=TOKEN_LABEL_ANGLE)[0]
+            for label in token_labels
+        ),
         default=0,
     )
     heatmap_width = num_tokens * resolved_cell_width
@@ -198,10 +209,15 @@ def render_heatmap(
             y0 = top_margin + (num_layers - 1 - layer_index) * resolved_cell_height
             y1 = y0 + resolved_cell_height
             value = float(matrix[token_index, layer_index].item())
-            draw.rectangle([(x0, y0), (x1, y1)], fill=palette_color(value, vmin, vmax_value))
+            draw.rectangle(
+                [(x0, y0), (x1, y1)], fill=palette_color(value, vmin, vmax_value)
+            )
 
     draw.rectangle(
-        [(left_margin, top_margin), (left_margin + heatmap_width, top_margin + heatmap_height)],
+        [
+            (left_margin, top_margin),
+            (left_margin + heatmap_width, top_margin + heatmap_height),
+        ],
         outline=(90, 90, 90),
     )
 
@@ -229,7 +245,11 @@ def render_heatmap(
         )
 
     for layer_index in pick_tick_indices(num_layers, max_layer_labels):
-        y = top_margin + (num_layers - 1 - layer_index) * resolved_cell_height + resolved_cell_height // 2
+        y = (
+            top_margin
+            + (num_layers - 1 - layer_index) * resolved_cell_height
+            + resolved_cell_height // 2
+        )
         draw.line([(left_margin - 6, y), (left_margin, y)], fill=(60, 60, 60), width=1)
         label_width, label_height = measure_text(layer_labels[layer_index], font)
         draw.text(

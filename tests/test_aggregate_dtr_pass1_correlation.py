@@ -15,7 +15,13 @@ from src.aggregation.aggregate_dtr_pass1_correlation import (
 )
 
 
-def write_summary(path: Path, *, run_dir: str, model: str = "openai/gpt-oss-120b", bins: list[dict] | None = None) -> None:
+def write_summary(
+    path: Path,
+    *,
+    run_dir: str,
+    model: str = "openai/gpt-oss-120b",
+    bins: list[dict] | None = None,
+) -> None:
     payload = {
         "run_dir": run_dir,
         "task": "aime24_custom",
@@ -69,7 +75,11 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
             run_summary.parent.mkdir(parents=True)
             write_summary(run_summary, run_dir="/tmp/run-0")
 
-            skipped_summary = root / "dtr_pass1_correlation_aggregated" / "dtr_pass1_correlation_bins2.json"
+            skipped_summary = (
+                root
+                / "dtr_pass1_correlation_aggregated"
+                / "dtr_pass1_correlation_bins2.json"
+            )
             skipped_summary.parent.mkdir()
             write_summary(skipped_summary, run_dir="/tmp/aggregate")
 
@@ -154,7 +164,9 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
             self.assertEqual(payload["source_count"], 1)
             self.assertEqual(payload["run_dirs"], ["/tmp/run"])
             self.assertEqual(output_path.name, aggregated_json_name(2))
-            self.assertEqual(payload["plot_path"], str(aggregate_dir / plot_filename(2)))
+            self.assertEqual(
+                payload["plot_path"], str(aggregate_dir / plot_filename(2))
+            )
 
 
 if __name__ == "__main__":

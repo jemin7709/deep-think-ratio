@@ -48,7 +48,9 @@ class JsdHeatmapHelpersTest(unittest.TestCase):
 
     def test_title_subtitle_and_heatmap_path(self):
         self.assertEqual(
-            build_heatmap_title(doc_id=3, repeat_index=4, hidden_state_mode="normed_normed"),
+            build_heatmap_title(
+                doc_id=3, repeat_index=4, hidden_state_mode="normed_normed"
+            ),
             "doc=3 rep=4 mode=normed_normed",
         )
         self.assertEqual(
@@ -99,7 +101,9 @@ class JsdHeatmapHelpersTest(unittest.TestCase):
                     "model_path": "dummy/model",
                     "hidden_state_mode": "normed_normed",
                     "response_token_ids": torch.tensor([11, 12], dtype=torch.long),
-                    "jsd_matrix": torch.tensor([[0.1, 0.4], [0.2, 0.8]], dtype=torch.float32),
+                    "jsd_matrix": torch.tensor(
+                        [[0.1, 0.4], [0.2, 0.8]], dtype=torch.float32
+                    ),
                 },
                 output_dir / "doc3_rep4.pt",
             )

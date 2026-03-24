@@ -120,7 +120,9 @@ def discover_summary_paths(
     return paths
 
 
-def _shared_identity(payload: dict[str, Any]) -> tuple[str, str, int, int, int, float, float]:
+def _shared_identity(
+    payload: dict[str, Any],
+) -> tuple[str, str, int, int, int, float, float]:
     return (
         str(payload["task"]),
         str(payload["model"]),
@@ -181,7 +183,9 @@ def _stddev_by_key(
         if excluded_keys is None or key not in excluded_keys
     ]
     return {
-        key: sample_stddev([float(payload["summary"][section][key]) for payload in payloads])
+        key: sample_stddev(
+            [float(payload["summary"][section][key]) for payload in payloads]
+        )
         for key in keys
     }
 
@@ -193,13 +197,16 @@ def _iter_source_summaries(payloads: list[dict[str, Any]]) -> Iterable[dict[str,
             "run_dir": str(payload["run_dir"]),
             "output_dir": str(payload["output_dir"]),
             "metrics": {
-                key: float(summary["metrics"][key]) for key in _section_keys(payload, "metrics")
+                key: float(summary["metrics"][key])
+                for key in _section_keys(payload, "metrics")
             },
             "cost": {
-                key: float(summary["cost"][key]) for key in _section_keys(payload, "cost")
+                key: float(summary["cost"][key])
+                for key in _section_keys(payload, "cost")
             },
             "delta": {
-                key: float(summary["delta"][key]) for key in _section_keys(payload, "delta")
+                key: float(summary["delta"][key])
+                for key in _section_keys(payload, "delta")
             },
         }
 
@@ -226,7 +233,9 @@ def build_output(
         "rho": float(first["rho"]),
         "source_count": len(sources),
         "metrics_mean": _mean_by_key(payloads, "metrics"),
-        "metrics_stddev": _stddev_by_key(payloads, "metrics", excluded_keys={"num_docs"}),
+        "metrics_stddev": _stddev_by_key(
+            payloads, "metrics", excluded_keys={"num_docs"}
+        ),
         "cost_mean": _mean_by_key(payloads, "cost"),
         "cost_stddev": _stddev_by_key(payloads, "cost"),
         "delta_mean": _mean_by_key(payloads, "delta"),
