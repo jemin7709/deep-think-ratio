@@ -9,11 +9,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean
 
-from src.experiment.repetition_metrics import mean_seq_rep_n
+from src.dtr.jsd_utils import load_aggregated_results
+from src.experiment.think_n import REP_LEVELS
+from src.experiment.think_n import REP_N_VALUES
 from src.experiment.think_n import RepeatRecord
+from src.experiment.think_n import build_repetition_metrics
 from src.experiment.think_n import load_prefix_dtr_rows
 from src.experiment.think_n import load_sample_rows
-from src.dtr.jsd_utils import load_aggregated_results
 from tasks.aime24.metrics import infer_repeats, infer_task_name
 from tasks.aime24.utils import (
     resolve_model_identity,
@@ -21,10 +23,6 @@ from tasks.aime24.utils import (
     score_avg_at_n,
     score_maj_at_n,
 )
-
-
-REP_N_VALUES = (2, 4)
-REP_LEVELS = ("token", "word")
 
 
 @dataclass(frozen=True)
@@ -124,33 +122,6 @@ def build_ranked_repeats(
     return ranked_repeats
 
 
-def build_repetition_metrics(
-    *,
-    selected_completions: list[str],
-    completions: list[str],
-    model_name: str,
-    reasoning_tags: list[tuple[str, str]] | None,
-) -> dict[str, float]:
-    metrics: dict[str, float] = {}
-    for n in REP_N_VALUES:
-        for level in REP_LEVELS:
-            metrics[f"selected_{level}_seq_rep_{n}"] = mean_seq_rep_n(
-                selected_completions,
-                n=n,
-                granularity=level,
-                model_name=model_name,
-                reasoning_tags=reasoning_tags,
-            )
-            metrics[f"full_{level}_seq_rep_{n}"] = mean_seq_rep_n(
-                completions,
-                n=n,
-                granularity=level,
-                model_name=model_name,
-                reasoning_tags=reasoning_tags,
-            )
-    return metrics
-
-
 def build_doc_result(
     *,
     row: dict,
@@ -240,7 +211,7 @@ def summarize_doc_results(
     mean_key = f"mean_avg@{repeats}"
     metric_keys = [bottom_key, cons_key, mean_key]
     metric_keys.extend(
-        f"{scope}_{level}_seq_rep_{n}"
+        f"{scope}_{level}_rep_{n}"
         for scope in ("selected", "full")
         for level in REP_LEVELS
         for n in REP_N_VALUES
@@ -298,11 +269,6 @@ def render_summary(
         f"{cons_key}: {summary['metrics'][cons_key]:.6f}",
         f"{mean_key}: {summary['metrics'][mean_key]:.6f}",
     ]
-    for scope in ("selected", "full"):
-        for level in REP_LEVELS:
-            for n in REP_N_VALUES:
-                metric_key = f"{scope}_{level}_seq_rep_{n}"
-                lines.append(f"{metric_key}: {summary['metrics'][metric_key]:.6f}")
     lines.extend(
         [
             f"delta_vs_cons_maj: {summary['delta']['vs_cons_maj']:.6f}",
@@ -313,9 +279,14 @@ def render_summary(
             f"mean_think_tokens_per_doc: {summary['cost']['mean_think_tokens_per_doc']:.6f}",
             f"saved_tokens: {summary['cost']['saved_tokens']}",
             f"saved_pct: {summary['cost']['saved_pct']:.6%}",
-            f"num_docs: {summary['metrics']['num_docs']}",
         ]
     )
+    for scope in ("selected", "full"):
+        for level in REP_LEVELS:
+            for n in REP_N_VALUES:
+                metric_key = f"{scope}_{level}_rep_{n}"
+                lines.append(f"{metric_key}: {summary['metrics'][metric_key]:.6f}")
+    lines.append(f"num_docs: {summary['metrics']['num_docs']}")
     return "\n".join(lines)
 
 

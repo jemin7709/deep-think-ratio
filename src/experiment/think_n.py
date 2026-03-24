@@ -14,6 +14,7 @@ import torch
 from src.dtr.jsd_utils import compute_dtr_from_jsd_matrix
 from src.dtr.jsd_utils import latest_matching_file
 from src.dtr.jsd_utils import load_aggregated_results
+from src.experiment.repetition_metrics import mean_seq_rep_n
 from tasks.aime24.metrics import infer_repeats, infer_task_name
 from tasks.aime24.utils import (
     resolve_model_identity,
@@ -21,6 +22,10 @@ from tasks.aime24.utils import (
     score_avg_at_n,
     score_maj_at_n,
 )
+
+
+REP_N_VALUES = (2, 4)
+REP_LEVELS = ("token", "word")
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,33 @@ class DocResult:
     ranked_repeats: list[RepeatRecord]
     metrics: dict[str, float]
     cost: dict[str, int]
+
+
+def build_repetition_metrics(
+    *,
+    selected_completions: list[str],
+    completions: list[str],
+    model_name: str,
+    reasoning_tags: list[tuple[str, str]] | None,
+) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    for n in REP_N_VALUES:
+        for level in REP_LEVELS:
+            metrics[f"selected_{level}_rep_{n}"] = mean_seq_rep_n(
+                selected_completions,
+                n=n,
+                granularity=level,
+                model_name=model_name,
+                reasoning_tags=reasoning_tags,
+            )
+            metrics[f"full_{level}_rep_{n}"] = mean_seq_rep_n(
+                completions,
+                n=n,
+                granularity=level,
+                model_name=model_name,
+                reasoning_tags=reasoning_tags,
+            )
+    return metrics
 
 
 def resolve_selected_count(
@@ -174,6 +206,7 @@ def build_doc_result(
     prefix_len: int,
     prefix_rows: dict[tuple[int, int], tuple[float, int]],
     reasoning_tags: list[tuple[str, str]] | None,
+    model_name: str,
 ) -> DocResult:
     doc_id = int(row["doc_id"])
     target = str(row["target"])
@@ -200,31 +233,41 @@ def build_doc_result(
     )
     think_cost = prefix_cost + continuation_cost
 
+    metrics = {
+        f"think_maj@{selected_count}": score_maj_at_n(
+            target,
+            selected_completions,
+            n=selected_count,
+            reasoning_tags=reasoning_tags,
+        ),
+        f"cons_maj@{repeats}": score_maj_at_n(
+            target,
+            completions,
+            n=repeats,
+            reasoning_tags=reasoning_tags,
+        ),
+        f"mean_avg@{repeats}": score_avg_at_n(
+            target,
+            completions,
+            n=repeats,
+            reasoning_tags=reasoning_tags,
+        ),
+    }
+    metrics.update(
+        build_repetition_metrics(
+            selected_completions=selected_completions,
+            completions=completions,
+            model_name=model_name,
+            reasoning_tags=reasoning_tags,
+        )
+    )
+
     return DocResult(
         doc_id=doc_id,
         target=target,
         selected_repeat_indices=selected_repeat_indices,
         ranked_repeats=ranked_repeats,
-        metrics={
-            f"think_maj@{selected_count}": score_maj_at_n(
-                target,
-                selected_completions,
-                n=selected_count,
-                reasoning_tags=reasoning_tags,
-            ),
-            f"cons_maj@{repeats}": score_maj_at_n(
-                target,
-                completions,
-                n=repeats,
-                reasoning_tags=reasoning_tags,
-            ),
-            f"mean_avg@{repeats}": score_avg_at_n(
-                target,
-                completions,
-                n=repeats,
-                reasoning_tags=reasoning_tags,
-            ),
-        },
+        metrics=metrics,
         cost={
             "full_tokens": full_cost,
             "prefix_tokens": prefix_cost,
@@ -243,13 +286,16 @@ def summarize_doc_results(
     think_key = f"think_maj@{selected_count}"
     cons_key = f"cons_maj@{repeats}"
     mean_key = f"mean_avg@{repeats}"
+    metric_keys = [think_key, cons_key, mean_key]
+    metric_keys.extend(
+        f"{scope}_{level}_rep_{n}"
+        for scope in ("selected", "full")
+        for level in REP_LEVELS
+        for n in REP_N_VALUES
+    )
 
-    metrics = {
-        think_key: fmean(result.metrics[think_key] for result in doc_results),
-        cons_key: fmean(result.metrics[cons_key] for result in doc_results),
-        mean_key: fmean(result.metrics[mean_key] for result in doc_results),
-        "num_docs": len(doc_results),
-    }
+    metrics = {key: fmean(result.metrics[key] for result in doc_results) for key in metric_keys}
+    metrics["num_docs"] = len(doc_results)
     total_full_tokens = sum(result.cost["full_tokens"] for result in doc_results)
     total_think_tokens = sum(result.cost["think_tokens"] for result in doc_results)
     saved_tokens = total_full_tokens - total_think_tokens
@@ -303,8 +349,13 @@ def render_summary(
         f"mean_think_tokens_per_doc: {summary['cost']['mean_think_tokens_per_doc']:.6f}",
         f"saved_tokens: {summary['cost']['saved_tokens']}",
         f"saved_pct: {summary['cost']['saved_pct']:.6%}",
-        f"num_docs: {summary['metrics']['num_docs']}",
     ]
+    for scope in ("selected", "full"):
+        for level in REP_LEVELS:
+            for n in REP_N_VALUES:
+                metric_key = f"{scope}_{level}_rep_{n}"
+                lines.append(f"{metric_key}: {summary['metrics'][metric_key]:.6f}")
+    lines.append(f"num_docs: {summary['metrics']['num_docs']}")
     return "\n".join(lines)
 
 
@@ -343,6 +394,7 @@ def run_experiment(
             prefix_len=prefix_len,
             prefix_rows=prefix_rows,
             reasoning_tags=reasoning_tags,
+            model_name=model_name,
         )
         for row in sample_rows
     ]
