@@ -14,6 +14,10 @@ from torch import Tensor
 
 
 HiddenStateMode = Literal["raw_raw", "raw_normed", "normed_normed"]
+DEFAULT_HIDDEN_STATE_MODE: HiddenStateMode = "normed_normed"
+DEFAULT_TOKEN_BLOCK_SIZE = 128
+DEFAULT_G = 0.5
+DEFAULT_RHO = 0.85
 
 
 @dataclass
@@ -97,7 +101,7 @@ def load_samples(
             row = json.loads(line)
             prompt_text = _prompt_text_from_arguments(row["arguments"])
             all_responses = [str(response) for response in row["resps"][0]]
-            indices = repeat_indices or list(range(len(all_responses)))
+            indices = list(range(len(all_responses))) if repeat_indices is None else repeat_indices
 
             for repeat_index in indices:
                 samples.append(
@@ -117,17 +121,40 @@ def tokenize_prompt_and_response(
     prompt_text: str,
     response_text: str,
 ) -> tuple[Tensor, Tensor]:
-    """prompt와 response를 한 번에 토큰화한 뒤 response 토큰만 분리한다."""
+    """prompt와 response를 각각 토큰화한다."""
     prompt_token_ids = tokenizer.encode(prompt_text, add_special_tokens=False)
-    full_token_ids = tokenizer.encode(
-        prompt_text + response_text,
+    response_token_ids = tokenizer.encode(
+        response_text,
         add_special_tokens=False,
     )
-    response_token_ids = full_token_ids[len(prompt_token_ids) :]
 
     return (
         torch.tensor(prompt_token_ids, dtype=torch.long),
         torch.tensor(response_token_ids, dtype=torch.long),
+    )
+
+
+def _format_path_float(value: float) -> str:
+    return format(value, "g")
+
+
+def jsd_cache_dir_name(
+    *,
+    hidden_state_mode: HiddenStateMode,
+    token_block_size: int,
+) -> str:
+    return f"{hidden_state_mode}_tb{token_block_size}"
+
+
+def jsd_output_dir(
+    run_dir: Path,
+    *,
+    hidden_state_mode: HiddenStateMode = DEFAULT_HIDDEN_STATE_MODE,
+    token_block_size: int = DEFAULT_TOKEN_BLOCK_SIZE,
+) -> Path:
+    return run_dir / "jsd_matrices" / jsd_cache_dir_name(
+        hidden_state_mode=hidden_state_mode,
+        token_block_size=token_block_size,
     )
 
 
@@ -141,9 +168,36 @@ def dtr_output_dir(run_dir: Path) -> Path:
     return run_dir / "dtr"
 
 
-def dtr_results_path(run_dir: Path) -> Path:
+def dtr_results_path(
+    run_dir: Path,
+    *,
+    g: float = DEFAULT_G,
+    rho: float = DEFAULT_RHO,
+) -> Path:
     """run dir 기준 기본 DTR JSON 경로."""
-    return dtr_output_dir(run_dir) / "dtr_results_from_jsd.json"
+    return dtr_output_dir(run_dir) / f"dtr_g{_format_path_float(g)}_rho{_format_path_float(rho)}.json"
+
+
+def validate_dtr_inputs(
+    *,
+    jsd_matrix: Tensor,
+    g: float,
+    rho: float,
+) -> None:
+    num_tokens, num_layers = jsd_matrix.shape
+    if num_tokens < 1:
+        raise ValueError("jsd_matrix must contain at least one token row")
+    if num_layers < 1:
+        raise ValueError("jsd_matrix must contain at least one layer column")
+    if not 0.0 <= g <= 1.0:
+        raise ValueError(f"g must be in the interval [0, 1], got {g}")
+    if not 0.0 < rho <= 1.0:
+        raise ValueError(f"rho must be in the interval (0, 1], got {rho}")
+
+
+def validate_prefix_len(prefix_len: int) -> None:
+    if prefix_len < 1:
+        raise ValueError(f"prefix_len must be >= 1, got {prefix_len}")
 
 
 def extract_hidden_states(
@@ -385,6 +439,7 @@ def compute_dtr_from_jsd_matrix(
     rho: float = 0.85,
 ) -> JSDCacheResult:
     """저장된 JSD matrix만으로 DTR을 계산한다."""
+    validate_dtr_inputs(jsd_matrix=jsd_matrix, g=g, rho=rho)
     num_tokens, num_layers = jsd_matrix.shape
     total_layers = num_layers + 1
     deep_start = math.ceil(rho * total_layers)

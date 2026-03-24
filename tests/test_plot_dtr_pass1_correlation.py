@@ -5,13 +5,15 @@ from pathlib import Path
 
 from src.aggregation.dtr_pass1_correlation import (
     DEFAULT_OUTPUT_DIR_NAME,
-    DEFAULT_SUMMARY_FILENAME,
     build_title,
     default_output_dir,
     load_dtr_by_key,
     load_sequence_results,
     make_bins,
     pearson_r,
+    plot_filename,
+    resolve_paths,
+    summary_filename,
     write_summary_json,
 )
 from src.dtr.jsd_utils import dtr_results_path
@@ -78,7 +80,7 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             results_path = run_dir / "results_2026-03-22T00-00-00.json"
             samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
             dtr_path = dtr_results_path(run_dir)
-            output_path = default_output_dir(run_dir) / DEFAULT_SUMMARY_FILENAME
+            output_path = default_output_dir(run_dir) / summary_filename(2)
 
             results_path.write_text(
                 json.dumps({"config": {"model_args": {"pretrained": "openai/gpt-oss-120b"}}}),
@@ -135,6 +137,35 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             self.assertAlmostEqual(summary["bins"][1]["mean_dtr"], 0.7)
             self.assertAlmostEqual(summary["bins"][1]["pass_at_1"], 1.0)
             self.assertAlmostEqual(summary["pearson_r_binned"], 1.0)
+
+    def test_pearson_r_returns_zero_for_zero_variance(self):
+        self.assertEqual(pearson_r([0.1, 0.2], [1.0, 1.0]), 0.0)
+
+    def test_resolve_paths_uses_bins_in_default_output_names(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            results_path = run_dir / "results_2026-03-22T00-00-00.json"
+            samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
+            results_path.write_text(json.dumps({"results": {"aime24_custom": {}}}), encoding="utf-8")
+            samples_path.write_text("", encoding="utf-8")
+            args = type(
+                "Args",
+                (),
+                {
+                    "run_dir": run_dir,
+                    "dtr_path": None,
+                    "results_path": None,
+                    "samples_path": None,
+                    "num_bins": 7,
+                    "output_plot": None,
+                    "output_json": None,
+                },
+            )()
+
+            _dtr_path, _results_path, _samples_path, output_plot, output_json = resolve_paths(args)
+
+            self.assertEqual(output_plot, default_output_dir(run_dir) / plot_filename(7))
+            self.assertEqual(output_json, default_output_dir(run_dir) / summary_filename(7))
 
     def test_load_sequence_results_rejects_unmatched_dtr_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:

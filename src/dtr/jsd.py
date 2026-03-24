@@ -5,15 +5,18 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 
 from src.plot.jsd_heatmap import render_heatmap
+from src.dtr.jsd_utils import DEFAULT_HIDDEN_STATE_MODE
+from src.dtr.jsd_utils import DEFAULT_TOKEN_BLOCK_SIZE
 from src.dtr.jsd_utils import HiddenStateMode
 from src.dtr.jsd_utils import compute_jsd_matrix_from_model
 from src.dtr.jsd_utils import infer_task_name
 from src.dtr.jsd_utils import jsd_matrix_path
+from src.dtr.jsd_utils import jsd_output_dir
 from src.dtr.jsd_utils import latest_samples_file
 from src.dtr.jsd_utils import load_aggregated_results
 from src.dtr.jsd_utils import load_samples
@@ -37,12 +40,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="추출할 repeat index 목록 (생략 시 전체)",
     )
-    parser.add_argument("--token-block-size", type=int, default=128)
+    parser.add_argument("--token-block-size", type=int, default=DEFAULT_TOKEN_BLOCK_SIZE)
     parser.add_argument(
         "--hidden-state-mode",
         type=str,
         choices=["raw_raw", "raw_normed", "normed_normed"],
-        default="normed_normed",
+        default=DEFAULT_HIDDEN_STATE_MODE,
         help=(
             "hidden state 추출 모드: "
             "raw_raw=중간 raw/마지막 raw, "
@@ -54,7 +57,10 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         type=Path,
         default=None,
-        help="JSD matrix 저장 디렉토리 (기본값: <run_dir>/jsd_matrices)",
+        help=(
+            "JSD matrix 저장 디렉토리 "
+            "(기본값: <run_dir>/jsd_matrices/<hidden_state_mode>_tb<token_block_size>)"
+        ),
     )
     parser.add_argument(
         "--save-heatmap",
@@ -64,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--render-heatmaps-only",
         action="store_true",
-        help="기존 jsd_matrices/*.pt 캐시만 읽어 heatmap PNG만 다시 생성",
+        help="기존 JSD cache 디렉토리의 *.pt만 읽어 heatmap PNG만 다시 생성",
     )
     parser.add_argument(
         "--heatmap-dir",
@@ -165,6 +171,62 @@ def resolve_heatmap_dir(output_dir: Path, heatmap_dir: Path | None) -> Path:
     return (heatmap_dir or output_dir / "heatmaps").resolve()
 
 
+def resolve_output_dir(args: argparse.Namespace) -> Path:
+    if args.output_dir is not None:
+        return args.output_dir.resolve()
+    return jsd_output_dir(
+        args.run_dir.resolve(),
+        hidden_state_mode=args.hidden_state_mode,
+        token_block_size=args.token_block_size,
+    ).resolve()
+
+
+def build_jsd_payload(
+    *,
+    doc_id: int,
+    repeat_index: int,
+    model_path: str,
+    task_name: str,
+    samples_path: Path,
+    hidden_state_mode: HiddenStateMode,
+    token_block_size: int,
+    response_token_ids: torch.Tensor,
+    jsd_matrix: torch.Tensor,
+) -> dict[str, object]:
+    return {
+        "doc_id": doc_id,
+        "repeat_index": repeat_index,
+        "model_path": model_path,
+        "task_name": task_name,
+        "samples_path": str(samples_path),
+        "hidden_state_mode": hidden_state_mode,
+        "token_block_size": token_block_size,
+        "num_tokens": int(response_token_ids.shape[0]),
+        "response_token_ids": response_token_ids.cpu(),
+        "jsd_matrix": jsd_matrix,
+    }
+
+
+def _payload_identity(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        "hidden_state_mode": payload["hidden_state_mode"],
+        "token_block_size": cast(int, payload["token_block_size"]),
+        "model_path": str(payload["model_path"]),
+        "task_name": str(payload["task_name"]),
+        "samples_path": str(payload["samples_path"]),
+    }
+
+
+def save_jsd_payload(output_path: Path, payload: dict[str, object]) -> None:
+    if output_path.exists():
+        existing = torch.load(output_path, map_location="cpu", weights_only=False)
+        if _payload_identity(existing) != _payload_identity(payload):
+            raise FileExistsError(
+                f"refusing to overwrite JSD cache with mismatched metadata: {output_path}"
+            )
+    torch.save(payload, output_path)
+
+
 def render_existing_heatmaps(
     *,
     output_dir: Path,
@@ -235,7 +297,7 @@ def render_existing_heatmaps(
 def main() -> None:
     args = parse_args()
     run_dir = args.run_dir.resolve()
-    output_dir = (args.output_dir or run_dir / "jsd_matrices").resolve()
+    output_dir = resolve_output_dir(args)
     should_render_heatmaps = args.save_heatmap or args.render_heatmaps_only
     if args.render_heatmaps_only:
         heatmap_dir = resolve_heatmap_dir(output_dir, args.heatmap_dir)
@@ -308,21 +370,18 @@ def main() -> None:
             sample.doc_id,
             sample.repeat_index,
         )
-        torch.save(
-            {
-                "doc_id": sample.doc_id,
-                "repeat_index": sample.repeat_index,
-                "model_path": model_path,
-                "task_name": task_name,
-                "samples_path": str(samples_path),
-                "hidden_state_mode": hidden_state_mode,
-                "token_block_size": args.token_block_size,
-                "num_tokens": int(response_token_ids.shape[0]),
-                "response_token_ids": response_token_ids.cpu(),
-                "jsd_matrix": jsd_matrix,
-            },
-            output_path,
+        payload = build_jsd_payload(
+            doc_id=sample.doc_id,
+            repeat_index=sample.repeat_index,
+            model_path=model_path,
+            task_name=task_name,
+            samples_path=samples_path,
+            hidden_state_mode=hidden_state_mode,
+            token_block_size=args.token_block_size,
+            response_token_ids=response_token_ids,
+            jsd_matrix=jsd_matrix,
         )
+        save_jsd_payload(output_path, payload)
         plot_path: Path | None = None
         if heatmap_dir is not None:
             plot_path = heatmap_path(heatmap_dir, sample.doc_id, sample.repeat_index)

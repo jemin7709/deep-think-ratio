@@ -35,10 +35,14 @@ TEXT = (39, 44, 52)
 
 
 def fit_line(xs: list[float], ys: list[float]) -> tuple[float, float]:
+    if not xs or not ys:
+        raise ValueError("fit_line requires at least one point")
     mean_x = sum(xs) / len(xs)
     mean_y = sum(ys) / len(ys)
     variance_x = sum((x - mean_x) ** 2 for x in xs)
     covariance = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
+    if variance_x == 0.0:
+        return 0.0, mean_y
     slope = covariance / variance_x
     intercept = mean_y - slope * mean_x
     return slope, intercept

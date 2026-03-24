@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,7 +14,9 @@ from src.dtr.jsd import (
     heatmap_path,
     render_existing_heatmaps,
     resolve_heatmap_dir,
+    resolve_output_dir,
 )
+from src.plot.jsd_heatmap import pick_tick_indices
 
 
 class FakeTokenizer:
@@ -61,6 +64,28 @@ class JsdHeatmapHelpersTest(unittest.TestCase):
                 resolve_heatmap_dir(Path(tmpdir), None),
                 (Path(tmpdir) / "heatmaps").resolve(),
             )
+
+    def test_resolve_output_dir_uses_mode_and_token_block_size(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "results" / "run"
+            args = Namespace(
+                run_dir=run_dir,
+                output_dir=None,
+                hidden_state_mode="raw_normed",
+                token_block_size=64,
+            )
+
+            self.assertEqual(
+                resolve_output_dir(args),
+                (run_dir / "jsd_matrices" / "raw_normed_tb64").resolve(),
+            )
+
+    def test_pick_tick_indices_validates_and_limits_label_count(self):
+        with self.assertRaisesRegex(ValueError, "max_labels must be positive"):
+            pick_tick_indices(5, 0)
+        self.assertEqual(pick_tick_indices(5, 1), [0])
+        self.assertEqual(pick_tick_indices(5, 2), [0, 4])
+        self.assertLessEqual(len(pick_tick_indices(9, 3)), 3)
 
     def test_render_existing_heatmaps_reads_cached_jsd_payload(self):
         with tempfile.TemporaryDirectory() as tmpdir:

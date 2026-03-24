@@ -1,4 +1,4 @@
-"""여러 run의 `dtr_pass1_correlation.json`을 bin index 기준으로 평균낸다."""
+"""여러 run의 `dtr_pass1_correlation_bins*.json`을 bin index 기준으로 평균낸다."""
 
 from __future__ import annotations
 
@@ -14,10 +14,19 @@ from src.plot.dtr_pass1_correlation import plot_to_png
 
 DEFAULT_INPUT_ROOT = Path("results")
 DEFAULT_AGGREGATE_DIR_NAME = "dtr_pass1_correlation_aggregated"
-SOURCE_FILENAME = "dtr_pass1_correlation.json"
-AGGREGATED_JSON_NAME = "aggregated_dtr_pass1_correlation.json"
-PLOT_SUMMARY_JSON_NAME = "plot_dtr_pass1_correlation_summary.json"
-PLOT_FILENAME = "dtr_pass1_correlation.png"
+SOURCE_GLOB = "dtr_pass1_correlation_bins*.json"
+
+
+def aggregated_json_name(num_bins: int) -> str:
+    return f"aggregated_dtr_pass1_correlation_bins{num_bins}.json"
+
+
+def plot_summary_json_name(num_bins: int) -> str:
+    return f"plot_dtr_pass1_correlation_bins{num_bins}_summary.json"
+
+
+def plot_filename(num_bins: int) -> str:
+    return f"dtr_pass1_correlation_bins{num_bins}.png"
 
 
 @dataclass(frozen=True)
@@ -45,7 +54,7 @@ class AggregatedBin:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Aggregate run-level dtr_pass1_correlation.json summaries."
+        description="Aggregate run-level dtr_pass1_correlation_bins*.json summaries."
     )
     parser.add_argument("input_root", nargs="?", type=Path, default=DEFAULT_INPUT_ROOT)
     parser.add_argument("--aggregate-dir-name", default=DEFAULT_AGGREGATE_DIR_NAME)
@@ -57,11 +66,11 @@ def discover_summary_paths(input_root: Path, aggregate_dir_name: str) -> list[Pa
     excluded_dir = input_root / aggregate_dir_name
     paths = [
         path
-        for path in sorted(input_root.rglob(SOURCE_FILENAME))
+        for path in sorted(input_root.rglob(SOURCE_GLOB))
         if excluded_dir not in path.parents
     ]
     if not paths:
-        raise FileNotFoundError(f"no {SOURCE_FILENAME} found under {input_root}")
+        raise FileNotFoundError(f"no {SOURCE_GLOB} found under {input_root}")
     return paths
 
 
@@ -187,7 +196,7 @@ def write_aggregated_json(
     plot_path: Path,
     plot_summary_path: Path,
 ) -> Path:
-    output_path = aggregate_dir / AGGREGATED_JSON_NAME
+    output_path = aggregate_dir / aggregated_json_name(len(aggregated_bins))
     payload = {
         "input_root": str(input_root),
         "aggregate_dir": str(aggregate_dir),
@@ -235,12 +244,12 @@ def main() -> None:
     args = parse_args()
     input_root = args.input_root.resolve()
     aggregate_dir = input_root / args.aggregate_dir_name
-    plot_path = aggregate_dir / PLOT_FILENAME
-    plot_summary_path = aggregate_dir / PLOT_SUMMARY_JSON_NAME
 
     summary_paths = discover_summary_paths(input_root, args.aggregate_dir_name)
     summaries = load_source_summaries(summary_paths)
     aggregated_bins = aggregate_bins(summaries)
+    plot_path = aggregate_dir / plot_filename(len(aggregated_bins))
+    plot_summary_path = aggregate_dir / plot_summary_json_name(len(aggregated_bins))
     plot_bins = build_plot_bins(aggregated_bins)
     binned_pearson = pearson_r(
         [entry.mean_dtr for entry in aggregated_bins],

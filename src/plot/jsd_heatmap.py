@@ -54,13 +54,26 @@ def choose_cell_height(num_layers: int, user_value: int | None) -> int:
 
 
 def pick_tick_indices(num_items: int, max_labels: int) -> list[int]:
+    if max_labels <= 0:
+        raise ValueError(f"max_labels must be positive, got {max_labels}")
+    if num_items <= 0:
+        return []
     if num_items <= max_labels:
         return list(range(num_items))
+    if max_labels == 1:
+        return [0]
+    if max_labels == 2:
+        return [0, num_items - 1]
 
-    step = math.ceil(num_items / max_labels)
-    indices = list(range(0, num_items, step))
-    if indices[-1] != num_items - 1:
-        indices.append(num_items - 1)
+    last_index = num_items - 1
+    interior_slots = max_labels - 2
+    indices = [0]
+    for slot in range(1, interior_slots + 1):
+        position = round(slot * last_index / (interior_slots + 1))
+        if position > indices[-1]:
+            indices.append(position)
+    if indices[-1] != last_index:
+        indices.append(last_index)
     return indices
 
 

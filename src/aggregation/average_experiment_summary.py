@@ -1,7 +1,7 @@
 """같은 experiment slug를 가진 `summary.json` 산출물을 run들에 걸쳐 평균낸다.
 
 `src.experiment.think_n`은 각 run 아래 `experiments/<slug>/summary.json`을 만든다.
-이 모듈은 예를 들어 `prefix50_top50` 같은 slug를 받아, 해당 slug의 summary만 모아
+이 모듈은 예를 들어 `prefix50_top24of48_g0.5_rho0.85` 같은 slug를 받아, 해당 slug의 summary만 모아
 metric, cost, delta 섹션의 평균과 표준편차를 저장한다.
 """
 
@@ -43,16 +43,16 @@ def _metric_sort_key(key: str) -> tuple[int, int, str]:
         return (1, 0, key)
     if key.startswith("mean_avg@"):
         return (2, 0, key)
-    if key.startswith("selected_token_") and ("_rep_" in key or "_seq_rep_" in key):
+    if key.startswith("selected_token_") and "_rep_" in key:
         rep_order, tie = _rep_key_suffix(key)
         return (3, rep_order, tie)
-    if key.startswith("selected_word_") and ("_rep_" in key or "_seq_rep_" in key):
+    if key.startswith("selected_word_") and "_rep_" in key:
         rep_order, tie = _rep_key_suffix(key)
         return (4, rep_order, tie)
-    if key.startswith("full_token_") and ("_rep_" in key or "_seq_rep_" in key):
+    if key.startswith("full_token_") and "_rep_" in key:
         rep_order, tie = _rep_key_suffix(key)
         return (5, rep_order, tie)
-    if key.startswith("full_word_") and ("_rep_" in key or "_seq_rep_" in key):
+    if key.startswith("full_word_") and "_rep_" in key:
         rep_order, tie = _rep_key_suffix(key)
         return (6, rep_order, tie)
     if key == "num_docs":

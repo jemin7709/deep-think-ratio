@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean
 
+from src.dtr.jsd_utils import DEFAULT_G
+from src.dtr.jsd_utils import DEFAULT_RHO
 from src.dtr.jsd_utils import load_aggregated_results
 from src.experiment.think_n import REP_LEVELS
 from src.experiment.think_n import REP_N_VALUES
@@ -16,13 +18,6 @@ from src.experiment.think_n import RepeatRecord
 from src.experiment.think_n import build_repetition_metrics
 from src.experiment.think_n import load_prefix_dtr_rows
 from src.experiment.think_n import load_sample_rows
-from tasks.aime24.metrics import infer_repeats, infer_task_name
-from tasks.aime24.utils import (
-    resolve_model_identity,
-    resolve_reasoning_tags,
-    score_avg_at_n,
-    score_maj_at_n,
-)
 
 
 @dataclass(frozen=True)
@@ -45,7 +40,15 @@ def resolve_selected_count(
 ) -> int:
     """명시값이 있으면 그대로 쓰고, 없으면 비율에서 고른다."""
     if selected_count is not None:
+        if selected_count < 1 or selected_count > repeats:
+            raise ValueError(
+                f"selected_count must be between 1 and repeats ({repeats}), got {selected_count}"
+            )
         return selected_count
+    if bottom_fraction <= 0.0 or bottom_fraction > 1.0:
+        raise ValueError(
+            f"bottom_fraction must be in the interval (0, 1], got {bottom_fraction}"
+        )
     return max(1, math.ceil(repeats * bottom_fraction))
 
 
@@ -54,9 +57,13 @@ def experiment_slug(
     prefix_len: int,
     repeats: int,
     selected_count: int,
+    g: float,
+    rho: float,
 ) -> str:
-    bottom_percent = round(selected_count / repeats * 100)
-    return f"prefix{prefix_len}_bottom{bottom_percent}"
+    return (
+        f"prefix{prefix_len}_bottom{selected_count}of{repeats}"
+        f"_g{format(g, 'g')}_rho{format(rho, 'g')}"
+    )
 
 
 def build_output_dir(
@@ -65,6 +72,8 @@ def build_output_dir(
     prefix_len: int,
     repeats: int,
     selected_count: int,
+    g: float,
+    rho: float,
 ) -> Path:
     return (
         run_dir.resolve()
@@ -73,6 +82,8 @@ def build_output_dir(
             prefix_len=prefix_len,
             repeats=repeats,
             selected_count=selected_count,
+            g=g,
+            rho=rho,
         )
     )
 
@@ -85,8 +96,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prefix-len", type=int, default=50)
     parser.add_argument("--bottom-fraction", type=float, default=0.5)
     parser.add_argument("--selected-count", type=int)
-    parser.add_argument("--g", type=float, default=0.5)
-    parser.add_argument("--rho", type=float, default=0.85)
+    parser.add_argument("--g", type=float, default=DEFAULT_G)
+    parser.add_argument("--rho", type=float, default=DEFAULT_RHO)
     return parser.parse_args()
 
 
@@ -131,6 +142,8 @@ def build_doc_result(
     reasoning_tags: list[tuple[str, str]] | None,
     model_name: str,
 ) -> DocResult:
+    from tasks.aime24.utils import score_avg_at_n, score_maj_at_n
+
     doc_id = int(row["doc_id"])
     target = str(row["target"])
     completions = [str(response) for response in row["resps"][0]]
@@ -296,9 +309,12 @@ def run_experiment(
     prefix_len: int = 50,
     bottom_fraction: float = 0.5,
     selected_count: int | None = None,
-    g: float = 0.5,
-    rho: float = 0.85,
+    g: float = DEFAULT_G,
+    rho: float = DEFAULT_RHO,
 ) -> tuple[Path, Path]:
+    from tasks.aime24.metrics import infer_repeats, infer_task_name
+    from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags
+
     resolved_run_dir = run_dir.resolve()
     aggregated = load_aggregated_results(resolved_run_dir)
     task_name = infer_task_name(aggregated)
@@ -342,6 +358,8 @@ def run_experiment(
         prefix_len=prefix_len,
         repeats=repeats,
         selected_count=chosen_count,
+        g=g,
+        rho=rho,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 

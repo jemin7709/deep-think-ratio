@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 
+from src.dtr.jsd_utils import jsd_output_dir
 from src.experiment.think_n import (
     build_output_dir,
     resolve_selected_count,
@@ -63,8 +64,12 @@ def write_run_fixture(
         "\n".join(json.dumps(row) for row in sample_rows) + "\n",
         encoding="utf-8",
     )
-    matrix_dir = run_dir / "jsd_matrices"
-    matrix_dir.mkdir()
+    matrix_dir = jsd_output_dir(
+        run_dir,
+        hidden_state_mode="normed_normed",
+        token_block_size=128,
+    )
+    matrix_dir.mkdir(parents=True)
     for key, jsd_matrix in matrices.items():
         doc_id, repeat_index = key
         torch.save(
@@ -88,6 +93,10 @@ class ThinkNExperimentTest(unittest.TestCase):
             resolve_selected_count(repeats=48, top_fraction=0.5, selected_count=7),
             7,
         )
+        with self.assertRaisesRegex(ValueError, "selected_count must be between 1 and repeats"):
+            resolve_selected_count(repeats=48, top_fraction=0.5, selected_count=0)
+        with self.assertRaisesRegex(ValueError, "top_fraction must be in the interval"):
+            resolve_selected_count(repeats=48, top_fraction=0.0, selected_count=None)
 
     def test_build_output_dir_keeps_run_identity_under_experiment_tree(self):
         run_dir = Path("/tmp/results/aime24_custom/gpt-oss-120b/0/20260323T000000Z")
@@ -96,12 +105,14 @@ class ThinkNExperimentTest(unittest.TestCase):
             prefix_len=50,
             repeats=48,
             selected_count=24,
+            g=0.5,
+            rho=0.85,
         )
         self.assertEqual(
             output_dir,
             run_dir
             / "experiments"
-            / "prefix50_top50",
+            / "prefix50_top24of48_g0.5_rho0.85",
         )
 
     def test_run_experiment_uses_prefix_dtr_and_saves_summary_files(self):
@@ -180,6 +191,10 @@ class ThinkNExperimentTest(unittest.TestCase):
             self.assertAlmostEqual(float(match.group(1)), mean_think_tokens_per_doc)
             self.assertTrue(summary_json.is_file())
             self.assertTrue(summary_txt.is_file())
+            self.assertEqual(
+                summary_json.parent.name,
+                "prefix2_top2of4_g0.5_rho0.85",
+            )
 
     def test_run_experiment_cost_counts_short_prefixes_correctly(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -283,6 +298,20 @@ class ThinkNExperimentTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "missing prefix DTR"):
                 run_experiment(run_dir=run_dir, prefix_len=2, selected_count=2)
+
+    def test_run_experiment_rejects_non_positive_prefix_len(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "results" / "aime24_custom" / "gpt-oss-120b" / "0" / "20260323T000000Z"
+            write_run_fixture(
+                run_dir=run_dir,
+                repeats=1,
+                sample_rows=[make_sample_row(doc_id=0, target="42", completions=["42"])],
+                matrices={(0, 0): deep_jsd(1)},
+                num_tokens={(0, 0): 1},
+            )
+
+            with self.assertRaisesRegex(ValueError, "prefix_len must be >= 1"):
+                run_experiment(run_dir=run_dir, prefix_len=0, selected_count=1)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,12 @@ from pathlib import Path
 import torch
 
 from src.dtr.jsd_utils import compute_dtr_from_jsd_matrix
+from src.dtr.jsd_utils import DEFAULT_G
+from src.dtr.jsd_utils import DEFAULT_HIDDEN_STATE_MODE
+from src.dtr.jsd_utils import DEFAULT_RHO
+from src.dtr.jsd_utils import DEFAULT_TOKEN_BLOCK_SIZE
 from src.dtr.jsd_utils import dtr_results_path
+from src.dtr.jsd_utils import jsd_output_dir
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,22 +24,38 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="결과 run 디렉토리 경로 (e.g. results/aime24_custom/model/0/<timestamp>)",
     )
-    parser.add_argument("--g", type=float, default=0.5, help="settling threshold")
+    parser.add_argument("--g", type=float, default=DEFAULT_G, help="settling threshold")
     parser.add_argument(
         "--rho",
         type=float,
-        default=0.85,
+        default=DEFAULT_RHO,
         help="deep-thinking depth fraction",
+    )
+    parser.add_argument(
+        "--hidden-state-mode",
+        type=str,
+        choices=["raw_raw", "raw_normed", "normed_normed"],
+        default=DEFAULT_HIDDEN_STATE_MODE,
+        help="기본 matrix-dir를 해석할 hidden state 모드",
+    )
+    parser.add_argument(
+        "--token-block-size",
+        type=int,
+        default=DEFAULT_TOKEN_BLOCK_SIZE,
+        help="기본 matrix-dir를 해석할 token block size",
     )
     parser.add_argument(
         "--matrix-dir",
         type=Path,
-        help="JSD matrix 디렉토리 (기본값: <run_dir>/jsd_matrices)",
+        help=(
+            "JSD matrix 디렉토리 "
+            "(기본값: <run_dir>/jsd_matrices/<hidden_state_mode>_tb<token_block_size>)"
+        ),
     )
     parser.add_argument(
         "--output-path",
         type=Path,
-        help="결과 JSON 경로 (기본값: <run_dir>/dtr/dtr_results_from_jsd.json)",
+        help="결과 JSON 경로 (기본값: <run_dir>/dtr/dtr_g{g}_rho{rho}.json)",
     )
     return parser.parse_args()
 
@@ -42,10 +63,16 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    matrix_dir = args.matrix_dir or args.run_dir / "jsd_matrices"
-    output_path = args.output_path or dtr_results_path(args.run_dir)
+    matrix_dir = args.matrix_dir or jsd_output_dir(
+        args.run_dir,
+        hidden_state_mode=args.hidden_state_mode,
+        token_block_size=args.token_block_size,
+    )
+    output_path = args.output_path or dtr_results_path(args.run_dir, g=args.g, rho=args.rho)
 
     matrix_paths = sorted(matrix_dir.glob("doc*_rep*.pt"))
+    if not matrix_paths:
+        raise FileNotFoundError(f"no JSD matrices found under {matrix_dir}")
     print(f"처리할 JSD matrix 수: {len(matrix_paths)}")
 
     results = []

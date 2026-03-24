@@ -75,7 +75,15 @@ def summarize_run(
     *,
     reasoning_tags: list[tuple[str, str]] | None = None,
 ) -> dict[str, float]:
-    samples_by_doc_id = {sample["doc_id"]: sample for sample in samples}
+    if k < 1 or k > expected_n:
+        raise ValueError(f"k must be between 1 and expected_n ({expected_n}), got {k}")
+
+    samples_by_doc_id: dict[int, dict] = {}
+    for sample in samples:
+        doc_id = int(sample["doc_id"])
+        if doc_id in samples_by_doc_id:
+            raise ValueError(f"duplicate doc_id found in samples: {doc_id}")
+        samples_by_doc_id[doc_id] = sample
     if not samples_by_doc_id:
         raise ValueError("no valid samples found in run")
 
@@ -192,8 +200,8 @@ def write_postprocess_artifacts(
         repeats,
     )
     suffix = extract_suffix(aggregated_path, "results_")
-    postprocess_path = run_dir / f"postprocess_{suffix}.json"
-    summary_path = run_dir / f"summary_{suffix}.txt"
+    postprocess_path = run_dir / f"postprocess_k{k}_{suffix}.json"
+    summary_path = run_dir / f"summary_k{k}_{suffix}.txt"
     postprocess_path.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

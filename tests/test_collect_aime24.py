@@ -114,8 +114,8 @@ class CollectAime24Test(unittest.TestCase):
             payload = json.loads(postprocess_path.read_text(encoding="utf-8"))
             rendered = summary_path.read_text(encoding="utf-8")
 
-            self.assertEqual(postprocess_path.name, "postprocess_2026-03-21T00-00-00.json")
-            self.assertEqual(summary_path.name, "summary_2026-03-21T00-00-00.txt")
+            self.assertEqual(postprocess_path.name, "postprocess_k1_2026-03-21T00-00-00.json")
+            self.assertEqual(summary_path.name, "summary_k1_2026-03-21T00-00-00.txt")
             self.assertEqual(payload["model"], "openai/gpt-oss-120b")
             self.assertEqual(payload["metrics"]["avg@4"], 0.5)
             self.assertEqual(payload["metrics"]["maj@4"], 1.0)
@@ -127,6 +127,19 @@ class CollectAime24Test(unittest.TestCase):
     def test_summarize_run_rejects_repeat_mismatch(self):
         samples = [sample_record(0, "42", ["42", "0", "1"])]
         with self.assertRaisesRegex(ValueError, "expected 4 completions"):
+            summarize_run(samples, k=1, expected_n=4)
+
+    def test_summarize_run_rejects_invalid_k(self):
+        samples = [sample_record(0, "42", ["42", "0", "1", "2"])]
+        with self.assertRaisesRegex(ValueError, "k must be between 1 and expected_n"):
+            summarize_run(samples, k=0, expected_n=4)
+
+    def test_summarize_run_rejects_duplicate_doc_id(self):
+        samples = [
+            sample_record(0, "42", ["42", "0", "1", "2"]),
+            sample_record(0, "42", ["42", "0", "1", "2"]),
+        ]
+        with self.assertRaisesRegex(ValueError, "duplicate doc_id found in samples: 0"):
             summarize_run(samples, k=1, expected_n=4)
 
     def test_build_postprocess_payload_and_summary_render(self):

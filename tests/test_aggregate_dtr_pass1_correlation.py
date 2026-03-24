@@ -5,9 +5,12 @@ from pathlib import Path
 
 from src.aggregation.aggregate_dtr_pass1_correlation import (
     aggregate_bins,
+    aggregated_json_name,
     build_plot_bins,
     discover_summary_paths,
     load_source_summaries,
+    plot_filename,
+    plot_summary_json_name,
     write_aggregated_json,
 )
 
@@ -17,7 +20,7 @@ def write_summary(path: Path, *, run_dir: str, model: str = "openai/gpt-oss-120b
         "run_dir": run_dir,
         "task": "aime24_custom",
         "model": model,
-        "dtr_path": f"{run_dir}/dtr/dtr_results_from_jsd.json",
+        "dtr_path": f"{run_dir}/dtr/dtr_g0.5_rho0.85.json",
         "results_path": f"{run_dir}/results_2026-03-22.json",
         "samples_path": f"{run_dir}/samples_aime24_custom_2026-03-22.jsonl",
         "num_sequences": 4,
@@ -61,12 +64,12 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
                 / "0"
                 / "stamp"
                 / "dtr_pass1_correlation"
-                / "dtr_pass1_correlation.json"
+                / "dtr_pass1_correlation_bins2.json"
             )
             run_summary.parent.mkdir(parents=True)
             write_summary(run_summary, run_dir="/tmp/run-0")
 
-            skipped_summary = root / "dtr_pass1_correlation_aggregated" / "dtr_pass1_correlation.json"
+            skipped_summary = root / "dtr_pass1_correlation_aggregated" / "dtr_pass1_correlation_bins2.json"
             skipped_summary.parent.mkdir()
             write_summary(skipped_summary, run_dir="/tmp/aggregate")
 
@@ -142,15 +145,16 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
                 aggregate_dir=aggregate_dir,
                 summaries=summaries,
                 aggregated_bins=aggregated,
-                plot_path=aggregate_dir / "dtr_pass1_correlation.png",
-                plot_summary_path=aggregate_dir / "plot_dtr_pass1_correlation_summary.json",
+                plot_path=aggregate_dir / plot_filename(2),
+                plot_summary_path=aggregate_dir / plot_summary_json_name(2),
             )
 
             payload = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["task"], "aime24_custom")
             self.assertEqual(payload["source_count"], 1)
             self.assertEqual(payload["run_dirs"], ["/tmp/run"])
-            self.assertEqual(payload["plot_path"], str(aggregate_dir / "dtr_pass1_correlation.png"))
+            self.assertEqual(output_path.name, aggregated_json_name(2))
+            self.assertEqual(payload["plot_path"], str(aggregate_dir / plot_filename(2)))
 
 
 if __name__ == "__main__":

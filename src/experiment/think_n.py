@@ -11,17 +11,15 @@ from statistics import fmean
 
 import torch
 
+from src.dtr.jsd_utils import DEFAULT_G
+from src.dtr.jsd_utils import DEFAULT_HIDDEN_STATE_MODE
+from src.dtr.jsd_utils import DEFAULT_RHO
+from src.dtr.jsd_utils import DEFAULT_TOKEN_BLOCK_SIZE
 from src.dtr.jsd_utils import compute_dtr_from_jsd_matrix
+from src.dtr.jsd_utils import jsd_output_dir
 from src.dtr.jsd_utils import latest_matching_file
 from src.dtr.jsd_utils import load_aggregated_results
-from src.experiment.repetition_metrics import mean_seq_rep_n
-from tasks.aime24.metrics import infer_repeats, infer_task_name
-from tasks.aime24.utils import (
-    resolve_model_identity,
-    resolve_reasoning_tags,
-    score_avg_at_n,
-    score_maj_at_n,
-)
+from src.dtr.jsd_utils import validate_prefix_len
 
 
 REP_N_VALUES = (2, 4)
@@ -58,6 +56,8 @@ def build_repetition_metrics(
     model_name: str,
     reasoning_tags: list[tuple[str, str]] | None,
 ) -> dict[str, float]:
+    from src.experiment.repetition_metrics import mean_seq_rep_n
+
     metrics: dict[str, float] = {}
     for n in REP_N_VALUES:
         for level in REP_LEVELS:
@@ -86,7 +86,13 @@ def resolve_selected_count(
 ) -> int:
     """명시값이 있으면 그대로 쓰고, 없으면 비율에서 고른다."""
     if selected_count is not None:
+        if selected_count < 1 or selected_count > repeats:
+            raise ValueError(
+                f"selected_count must be between 1 and repeats ({repeats}), got {selected_count}"
+            )
         return selected_count
+    if top_fraction <= 0.0 or top_fraction > 1.0:
+        raise ValueError(f"top_fraction must be in the interval (0, 1], got {top_fraction}")
     return max(1, math.ceil(repeats * top_fraction))
 
 
@@ -95,9 +101,13 @@ def experiment_slug(
     prefix_len: int,
     repeats: int,
     selected_count: int,
+    g: float,
+    rho: float,
 ) -> str:
-    top_percent = round(selected_count / repeats * 100)
-    return f"prefix{prefix_len}_top{top_percent}"
+    return (
+        f"prefix{prefix_len}_top{selected_count}of{repeats}"
+        f"_g{format(g, 'g')}_rho{format(rho, 'g')}"
+    )
 
 
 def build_output_dir(
@@ -106,6 +116,8 @@ def build_output_dir(
     prefix_len: int,
     repeats: int,
     selected_count: int,
+    g: float,
+    rho: float,
 ) -> Path:
     return (
         run_dir.resolve()
@@ -114,6 +126,8 @@ def build_output_dir(
             prefix_len=prefix_len,
             repeats=repeats,
             selected_count=selected_count,
+            g=g,
+            rho=rho,
         )
     )
 
@@ -126,8 +140,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prefix-len", type=int, default=50)
     parser.add_argument("--top-fraction", type=float, default=0.5)
     parser.add_argument("--selected-count", type=int)
-    parser.add_argument("--g", type=float, default=0.5)
-    parser.add_argument("--rho", type=float, default=0.85)
+    parser.add_argument("--g", type=float, default=DEFAULT_G)
+    parser.add_argument("--rho", type=float, default=DEFAULT_RHO)
     return parser.parse_args()
 
 
@@ -147,7 +161,12 @@ def load_prefix_dtr_rows(
     g: float,
     rho: float,
 ) -> dict[tuple[int, int], tuple[float, int]]:
-    matrix_dir = run_dir / "jsd_matrices"
+    validate_prefix_len(prefix_len)
+    matrix_dir = jsd_output_dir(
+        run_dir,
+        hidden_state_mode=DEFAULT_HIDDEN_STATE_MODE,
+        token_block_size=DEFAULT_TOKEN_BLOCK_SIZE,
+    )
     matrix_paths = sorted(matrix_dir.glob("doc*_rep*.pt"))
     if not matrix_paths:
         raise FileNotFoundError(f"no JSD matrices found under {matrix_dir}")
@@ -208,6 +227,8 @@ def build_doc_result(
     reasoning_tags: list[tuple[str, str]] | None,
     model_name: str,
 ) -> DocResult:
+    from tasks.aime24.utils import score_avg_at_n, score_maj_at_n
+
     doc_id = int(row["doc_id"])
     target = str(row["target"])
     completions = [str(response) for response in row["resps"][0]]
@@ -365,9 +386,12 @@ def run_experiment(
     prefix_len: int = 50,
     top_fraction: float = 0.5,
     selected_count: int | None = None,
-    g: float = 0.5,
-    rho: float = 0.85,
+    g: float = DEFAULT_G,
+    rho: float = DEFAULT_RHO,
 ) -> tuple[Path, Path]:
+    from tasks.aime24.metrics import infer_repeats, infer_task_name
+    from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags
+
     resolved_run_dir = run_dir.resolve()
     aggregated = load_aggregated_results(resolved_run_dir)
     task_name = infer_task_name(aggregated)
@@ -411,6 +435,8 @@ def run_experiment(
         prefix_len=prefix_len,
         repeats=repeats,
         selected_count=chosen_count,
+        g=g,
+        rho=rho,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 

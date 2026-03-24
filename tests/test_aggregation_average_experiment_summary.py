@@ -69,44 +69,45 @@ class AverageExperimentSummaryTest(unittest.TestCase):
     def test_discover_summary_paths_filters_by_experiment_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            wanted = root / "run-a" / "experiments" / "prefix50_top50" / "summary.json"
-            other = root / "run-b" / "experiments" / "prefix30_top50" / "summary.json"
+            wanted = root / "run-a" / "experiments" / "prefix50_top24of48_g0.5_rho0.85" / "summary.json"
+            other = root / "run-b" / "experiments" / "prefix30_top24of48_g0.5_rho0.85" / "summary.json"
             skipped = (
                 root
                 / "experiments_aggregated"
-                / "prefix50_top50"
+                / "prefix50_top24of48_g0.5_rho0.85"
                 / "summary.json"
             )
             write_experiment_summary(
                 wanted,
                 run_dir="/tmp/run-a",
-                output_dir="/tmp/run-a/experiments/prefix50_top50",
+                output_dir="/tmp/run-a/experiments/prefix50_top24of48_g0.5_rho0.85",
             )
             write_experiment_summary(
                 other,
                 run_dir="/tmp/run-b",
-                output_dir="/tmp/run-b/experiments/prefix30_top50",
+                output_dir="/tmp/run-b/experiments/prefix30_top24of48_g0.5_rho0.85",
+                prefix_len=30,
             )
             write_experiment_summary(
                 skipped,
                 run_dir="/tmp/run-c",
-                output_dir="/tmp/run-c/experiments/prefix50_top50",
+                output_dir="/tmp/run-c/experiments/prefix50_top24of48_g0.5_rho0.85",
             )
 
-            paths = discover_summary_paths(root, "prefix50_top50", "experiments_aggregated")
+            paths = discover_summary_paths(root, "prefix50_top24of48_g0.5_rho0.85", "experiments_aggregated")
 
             self.assertEqual(paths, [wanted])
 
     def test_build_output_averages_metrics_cost_and_delta(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            path_a = root / "run-a" / "experiments" / "prefix50_top50" / "summary.json"
-            path_b = root / "run-b" / "experiments" / "prefix50_top50" / "summary.json"
-            aggregate_dir = root / "experiments_aggregated" / "prefix50_top50"
+            path_a = root / "run-a" / "experiments" / "prefix50_top24of48_g0.5_rho0.85" / "summary.json"
+            path_b = root / "run-b" / "experiments" / "prefix50_top24of48_g0.5_rho0.85" / "summary.json"
+            aggregate_dir = root / "experiments_aggregated" / "prefix50_top24of48_g0.5_rho0.85"
             write_experiment_summary(
                 path_a,
                 run_dir="/tmp/run-a",
-                output_dir="/tmp/run-a/experiments/prefix50_top50",
+                output_dir="/tmp/run-a/experiments/prefix50_top24of48_g0.5_rho0.85",
                 think_maj=0.8,
                 cons_maj=0.9,
                 mean_avg=0.7,
@@ -120,7 +121,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
             write_experiment_summary(
                 path_b,
                 run_dir="/tmp/run-b",
-                output_dir="/tmp/run-b/experiments/prefix50_top50",
+                output_dir="/tmp/run-b/experiments/prefix50_top24of48_g0.5_rho0.85",
                 think_maj=0.6,
                 cons_maj=0.8,
                 mean_avg=0.5,
@@ -137,14 +138,14 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 json.loads(path_b.read_text(encoding="utf-8")),
             ]
             output = build_output(
-                experiment_name="prefix50_top50",
+                experiment_name="prefix50_top24of48_g0.5_rho0.85",
                 input_root=root,
                 aggregate_dir=aggregate_dir,
                 sources=[path_a, path_b],
                 payloads=payloads,
             )
 
-            self.assertEqual(output["experiment"], "prefix50_top50")
+            self.assertEqual(output["experiment"], "prefix50_top24of48_g0.5_rho0.85")
             self.assertEqual(output["source_count"], 2)
             self.assertAlmostEqual(output["metrics_mean"]["think_maj@24"], 0.7)
             self.assertAlmostEqual(output["metrics_mean"]["cons_maj@48"], 0.85)
@@ -168,7 +169,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
     def test_build_output_rejects_mismatched_metric_keys(self):
         payload_a = {
             "run_dir": "/tmp/run-a",
-            "output_dir": "/tmp/run-a/experiments/prefix50_top50",
+            "output_dir": "/tmp/run-a/experiments/prefix50_top24of48_g0.5_rho0.85",
             "task": "task",
             "model": "model",
             "repeats": 48,
@@ -184,7 +185,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
         }
         payload_b = {
             "run_dir": "/tmp/run-b",
-            "output_dir": "/tmp/run-b/experiments/prefix50_top50",
+            "output_dir": "/tmp/run-b/experiments/prefix50_top24of48_g0.5_rho0.85",
             "task": "task",
             "model": "model",
             "repeats": 48,
@@ -201,9 +202,9 @@ class AverageExperimentSummaryTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "metric keys"):
             build_output(
-                experiment_name="prefix50_top50",
+                experiment_name="prefix50_top24of48_g0.5_rho0.85",
                 input_root=Path("/tmp"),
-                aggregate_dir=Path("/tmp/experiments_aggregated/prefix50_top50"),
+                aggregate_dir=Path("/tmp/experiments_aggregated/prefix50_top24of48_g0.5_rho0.85"),
                 sources=[Path("/tmp/a"), Path("/tmp/b")],
                 payloads=[payload_a, payload_b],
             )
@@ -211,9 +212,9 @@ class AverageExperimentSummaryTest(unittest.TestCase):
     def test_build_output_averages_bottom_experiment_metrics(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            path_a = root / "run-a" / "experiments" / "prefix50_bottom50" / "summary.json"
-            path_b = root / "run-b" / "experiments" / "prefix50_bottom50" / "summary.json"
-            aggregate_dir = root / "experiments_aggregated" / "prefix50_bottom50"
+            path_a = root / "run-a" / "experiments" / "prefix50_bottom24of48_g0.5_rho0.85" / "summary.json"
+            path_b = root / "run-b" / "experiments" / "prefix50_bottom24of48_g0.5_rho0.85" / "summary.json"
+            aggregate_dir = root / "experiments_aggregated" / "prefix50_bottom24of48_g0.5_rho0.85"
 
             def make_payload(
                 *,
@@ -231,7 +232,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
             ) -> dict:
                 return {
                     "run_dir": "/tmp/run",
-                    "output_dir": "/tmp/run/experiments/prefix50_bottom50",
+                    "output_dir": "/tmp/run/experiments/prefix50_bottom24of48_g0.5_rho0.85",
                     "task": "task",
                     "model": "model",
                     "repeats": 48,
@@ -297,9 +298,9 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 selected_word_rep_2=0.55,
             )
             payload_a["run_dir"] = "/tmp/run-a"
-            payload_a["output_dir"] = "/tmp/run-a/experiments/prefix50_bottom50"
+            payload_a["output_dir"] = "/tmp/run-a/experiments/prefix50_bottom24of48_g0.5_rho0.85"
             payload_b["run_dir"] = "/tmp/run-b"
-            payload_b["output_dir"] = "/tmp/run-b/experiments/prefix50_bottom50"
+            payload_b["output_dir"] = "/tmp/run-b/experiments/prefix50_bottom24of48_g0.5_rho0.85"
             path_a.parent.mkdir(parents=True, exist_ok=True)
             path_b.parent.mkdir(parents=True, exist_ok=True)
             path_a.write_text(json.dumps(payload_a), encoding="utf-8")
@@ -310,14 +311,14 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 json.loads(path_b.read_text(encoding="utf-8")),
             ]
             output = build_output(
-                experiment_name="prefix50_bottom50",
+                experiment_name="prefix50_bottom24of48_g0.5_rho0.85",
                 input_root=root,
                 aggregate_dir=aggregate_dir,
                 sources=[path_a, path_b],
                 payloads=payloads,
             )
 
-            self.assertEqual(output["experiment"], "prefix50_bottom50")
+            self.assertEqual(output["experiment"], "prefix50_bottom24of48_g0.5_rho0.85")
             self.assertEqual(output["source_count"], 2)
             self.assertAlmostEqual(output["metrics_mean"]["bottom_maj@24"], 0.7)
             self.assertAlmostEqual(output["metrics_mean"]["full_token_rep_4"], 0.3)

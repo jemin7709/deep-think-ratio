@@ -16,8 +16,14 @@ from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags, s
 
 
 DEFAULT_OUTPUT_DIR_NAME = "dtr_pass1_correlation"
-DEFAULT_PLOT_FILENAME = "dtr_pass1_correlation.png"
-DEFAULT_SUMMARY_FILENAME = "dtr_pass1_correlation.json"
+
+
+def plot_filename(num_bins: int) -> str:
+    return f"dtr_pass1_correlation_bins{num_bins}.png"
+
+
+def summary_filename(num_bins: int) -> str:
+    return f"dtr_pass1_correlation_bins{num_bins}.json"
 
 
 @dataclass(frozen=True)
@@ -59,13 +65,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_output_plot_path(output_plot: Path | None) -> Path | None:
+def resolve_output_plot_path(output_plot: Path | None, num_bins: int) -> Path | None:
     if output_plot is None:
         return None
 
     candidate = output_plot.resolve()
     if candidate.exists() and candidate.is_dir():
-        return candidate / DEFAULT_PLOT_FILENAME
+        return candidate / plot_filename(num_bins)
     if candidate.suffix:
         return candidate
     return candidate.with_suffix(".png")
@@ -97,14 +103,14 @@ def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path | No
 
     output_dir = default_output_dir(run_dir)
     output_plot = (
-        resolve_output_plot_path(args.output_plot)
+        resolve_output_plot_path(args.output_plot, args.num_bins)
         if args.output_plot is not None
-        else output_dir / DEFAULT_PLOT_FILENAME
+        else output_dir / plot_filename(args.num_bins)
     )
     output_json = (
         args.output_json.resolve()
         if args.output_json is not None
-        else output_dir / DEFAULT_SUMMARY_FILENAME
+        else output_dir / summary_filename(args.num_bins)
     )
     return dtr_path, results_path, samples_path, output_plot, output_json
 
@@ -204,11 +210,15 @@ def make_bins(rows: list[SequenceResult], num_bins: int) -> list[BinSummary]:
 
 
 def pearson_r(xs: list[float], ys: list[float]) -> float:
+    if not xs or not ys:
+        raise ValueError("pearson_r requires at least one point")
     mean_x = fmean(xs)
     mean_y = fmean(ys)
     numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
     denom_x = sum((x - mean_x) ** 2 for x in xs)
     denom_y = sum((y - mean_y) ** 2 for y in ys)
+    if denom_x == 0.0 or denom_y == 0.0:
+        return 0.0
     return numerator / math.sqrt(denom_x * denom_y)
 
 
