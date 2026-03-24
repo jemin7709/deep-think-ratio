@@ -33,6 +33,12 @@ for run_dir in "$@"; do
 done
 
 for run_dir in "$@"; do
+  echo "[$(timestamp)] gpu=$GPU_ID think-n-bottom-start run_dir=$run_dir"
+  bash scripts/calc_think_n_bottom.sh "$run_dir"
+  echo "[$(timestamp)] gpu=$GPU_ID think-n-bottom-done run_dir=$run_dir"
+done
+
+for run_dir in "$@"; do
   echo "[$(timestamp)] gpu=$GPU_ID heatmap-start run_dir=$run_dir"
   bash scripts/calc_heatmaps.sh "$run_dir"
   echo "[$(timestamp)] gpu=$GPU_ID heatmap-done run_dir=$run_dir"
