@@ -26,6 +26,70 @@ def sample_stddev(values: list[float]) -> float:
     return stdev(values) if len(values) > 1 else 0.0
 
 
+def _rep_key_suffix(key: str) -> tuple[int, str]:
+    if key.endswith("_2"):
+        return (0, key)
+    if key.endswith("_4"):
+        return (1, key)
+    return (2, key)
+
+
+def _metric_sort_key(key: str) -> tuple[int, int, str]:
+    if key.startswith("think_maj@"):
+        return (0, 0, key)
+    if key.startswith("bottom_maj@"):
+        return (0, 1, key)
+    if key.startswith("cons_maj@"):
+        return (1, 0, key)
+    if key.startswith("mean_avg@"):
+        return (2, 0, key)
+    if key.startswith("selected_token_") and ("_rep_" in key or "_seq_rep_" in key):
+        rep_order, tie = _rep_key_suffix(key)
+        return (3, rep_order, tie)
+    if key.startswith("selected_word_") and ("_rep_" in key or "_seq_rep_" in key):
+        rep_order, tie = _rep_key_suffix(key)
+        return (4, rep_order, tie)
+    if key.startswith("full_token_") and ("_rep_" in key or "_seq_rep_" in key):
+        rep_order, tie = _rep_key_suffix(key)
+        return (5, rep_order, tie)
+    if key.startswith("full_word_") and ("_rep_" in key or "_seq_rep_" in key):
+        rep_order, tie = _rep_key_suffix(key)
+        return (6, rep_order, tie)
+    if key == "num_docs":
+        return (7, 0, key)
+    return (8, 0, key)
+
+
+def _cost_sort_key(key: str) -> tuple[int, str]:
+    order = {
+        "total_full_tokens": 0,
+        "total_think_tokens": 1,
+        "mean_full_tokens_per_doc": 2,
+        "mean_think_tokens_per_doc": 3,
+        "saved_tokens": 4,
+        "saved_pct": 5,
+    }
+    return (order.get(key, 99), key)
+
+
+def _delta_sort_key(key: str) -> tuple[int, str]:
+    order = {
+        "vs_cons_maj": 0,
+        "vs_mean_avg": 1,
+    }
+    return (order.get(key, 99), key)
+
+
+def _section_sort_key(section: str, key: str):
+    if section == "metrics":
+        return _metric_sort_key(key)
+    if section == "cost":
+        return _cost_sort_key(key)
+    if section == "delta":
+        return _delta_sort_key(key)
+    return (0, key)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Aggregate experiment summary.json artifacts by experiment slug."
@@ -69,7 +133,10 @@ def _shared_identity(payload: dict[str, Any]) -> tuple[str, str, int, int, int, 
 
 
 def _section_keys(payload: dict[str, Any], section: str) -> list[str]:
-    return sorted(str(key) for key in payload["summary"][section])
+    return sorted(
+        (str(key) for key in payload["summary"][section]),
+        key=lambda key: _section_sort_key(section, key),
+    )
 
 
 def validate_payloads(payloads: list[dict[str, Any]]) -> None:
@@ -126,10 +193,14 @@ def _iter_source_summaries(payloads: list[dict[str, Any]]) -> Iterable[dict[str,
             "run_dir": str(payload["run_dir"]),
             "output_dir": str(payload["output_dir"]),
             "metrics": {
-                key: float(value) for key, value in summary["metrics"].items()
+                key: float(summary["metrics"][key]) for key in _section_keys(payload, "metrics")
             },
-            "cost": {key: float(value) for key, value in summary["cost"].items()},
-            "delta": {key: float(value) for key, value in summary["delta"].items()},
+            "cost": {
+                key: float(summary["cost"][key]) for key in _section_keys(payload, "cost")
+            },
+            "delta": {
+                key: float(summary["delta"][key]) for key in _section_keys(payload, "delta")
+            },
         }
 
 

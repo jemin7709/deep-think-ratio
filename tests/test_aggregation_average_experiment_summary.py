@@ -244,14 +244,14 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                             "bottom_maj@24": bottom_maj,
                             "cons_maj@48": cons_maj,
                             "mean_avg@48": mean_avg,
-                            "full_token_seq_rep_4": full_token_rep_4,
-                            "full_token_seq_rep_2": full_token_rep_2,
-                            "selected_token_seq_rep_4": selected_token_rep_4,
-                            "selected_token_seq_rep_2": selected_token_rep_2,
-                            "full_word_seq_rep_4": full_word_rep_4,
-                            "full_word_seq_rep_2": full_word_rep_2,
-                            "selected_word_seq_rep_4": selected_word_rep_4,
-                            "selected_word_seq_rep_2": selected_word_rep_2,
+                            "full_token_rep_4": full_token_rep_4,
+                            "full_token_rep_2": full_token_rep_2,
+                            "selected_token_rep_4": selected_token_rep_4,
+                            "selected_token_rep_2": selected_token_rep_2,
+                            "full_word_rep_4": full_word_rep_4,
+                            "full_word_rep_2": full_word_rep_2,
+                            "selected_word_rep_4": selected_word_rep_4,
+                            "selected_word_rep_2": selected_word_rep_2,
                             "num_docs": 30,
                         },
                         "cost": {
@@ -320,11 +320,11 @@ class AverageExperimentSummaryTest(unittest.TestCase):
             self.assertEqual(output["experiment"], "prefix50_bottom50")
             self.assertEqual(output["source_count"], 2)
             self.assertAlmostEqual(output["metrics_mean"]["bottom_maj@24"], 0.7)
-            self.assertAlmostEqual(output["metrics_mean"]["full_token_seq_rep_4"], 0.3)
-            self.assertAlmostEqual(output["metrics_mean"]["selected_token_seq_rep_2"], 0.45)
-            self.assertAlmostEqual(output["metrics_mean"]["selected_word_seq_rep_4"], 0.4)
+            self.assertAlmostEqual(output["metrics_mean"]["full_token_rep_4"], 0.3)
+            self.assertAlmostEqual(output["metrics_mean"]["selected_token_rep_2"], 0.45)
+            self.assertAlmostEqual(output["metrics_mean"]["selected_word_rep_4"], 0.4)
             self.assertAlmostEqual(
-                output["metrics_stddev"]["full_token_seq_rep_2"],
+                output["metrics_stddev"]["full_token_rep_2"],
                 0.21213203435596426,
             )
 
