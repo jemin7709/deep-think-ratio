@@ -20,12 +20,16 @@ def write_summary(
     *,
     run_dir: str,
     model: str = "openai/gpt-oss-120b",
+    dtr_scope: str = "full",
+    prefix_len: int | None = None,
     bins: list[dict] | None = None,
 ) -> None:
     payload = {
         "run_dir": run_dir,
         "task": "aime24_custom",
         "model": model,
+        "dtr_scope": dtr_scope,
+        "prefix_len": prefix_len,
         "dtr_path": f"{run_dir}/dtr/dtr_g0.5_rho0.85.json",
         "results_path": f"{run_dir}/results_2026-03-22.json",
         "samples_path": f"{run_dir}/samples_aime24_custom_2026-03-22.jsonl",
@@ -119,7 +123,7 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
                 ],
             )
 
-            summaries = load_source_summaries([path_a, path_b])
+            summaries = load_source_summaries([path_a, path_b], prefix_len=None)
             aggregated = aggregate_bins(summaries)
             plot_bins = build_plot_bins(aggregated)
 
@@ -138,7 +142,26 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
             write_summary(path_b, run_dir="/tmp/run-b", model="model-b")
 
             with self.assertRaisesRegex(ValueError, "task and model"):
-                load_source_summaries([path_a, path_b])
+                load_source_summaries([path_a, path_b], prefix_len=None)
+
+    def test_load_source_summaries_filters_by_prefix_len(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            full_path = root / "full.json"
+            prefix_path = root / "prefix.json"
+            write_summary(full_path, run_dir="/tmp/run-full")
+            write_summary(
+                prefix_path,
+                run_dir="/tmp/run-prefix",
+                dtr_scope="prefix",
+                prefix_len=2,
+            )
+
+            summaries = load_source_summaries([full_path, prefix_path], prefix_len=2)
+
+            self.assertEqual([summary.run_dir for summary in summaries], [Path("/tmp/run-prefix")])
+            self.assertEqual(summaries[0].dtr_scope, "prefix")
+            self.assertEqual(summaries[0].prefix_len, 2)
 
     def test_write_aggregated_json_emits_expected_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -147,7 +170,7 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
             aggregate_dir.mkdir()
             summary_path = root / "run.json"
             write_summary(summary_path, run_dir="/tmp/run")
-            summaries = load_source_summaries([summary_path])
+            summaries = load_source_summaries([summary_path], prefix_len=None)
             aggregated = aggregate_bins(summaries)
 
             output_path = write_aggregated_json(
@@ -161,11 +184,46 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
 
             payload = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["task"], "aime24_custom")
+            self.assertEqual(payload["dtr_scope"], "full")
+            self.assertIsNone(payload["prefix_len"])
             self.assertEqual(payload["source_count"], 1)
             self.assertEqual(payload["run_dirs"], ["/tmp/run"])
             self.assertEqual(output_path.name, aggregated_json_name(2))
             self.assertEqual(
                 payload["plot_path"], str(aggregate_dir / plot_filename(2))
+            )
+
+    def test_write_aggregated_json_uses_prefix_suffix(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            aggregate_dir = root / "dtr_pass1_correlation_aggregated"
+            aggregate_dir.mkdir()
+            summary_path = root / "run_prefix.json"
+            write_summary(
+                summary_path,
+                run_dir="/tmp/run-prefix",
+                dtr_scope="prefix",
+                prefix_len=3,
+            )
+            summaries = load_source_summaries([summary_path], prefix_len=3)
+            aggregated = aggregate_bins(summaries)
+
+            output_path = write_aggregated_json(
+                input_root=root,
+                aggregate_dir=aggregate_dir,
+                summaries=summaries,
+                aggregated_bins=aggregated,
+                plot_path=aggregate_dir / plot_filename(2, prefix_len=3),
+                plot_summary_path=aggregate_dir / plot_summary_json_name(2, prefix_len=3),
+            )
+
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["dtr_scope"], "prefix")
+            self.assertEqual(payload["prefix_len"], 3)
+            self.assertEqual(output_path.name, aggregated_json_name(2, prefix_len=3))
+            self.assertEqual(
+                payload["plot_path"],
+                str(aggregate_dir / plot_filename(2, prefix_len=3)),
             )
 
 

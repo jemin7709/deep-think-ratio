@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean
 
+from src.dtr.jsd_utils import DEFAULT_G
+from src.dtr.jsd_utils import DEFAULT_RHO
 from src.dtr.jsd_utils import (
     dtr_results_path,
     latest_matching_file,
@@ -26,12 +28,22 @@ from tasks.aime24.utils import (
 DEFAULT_OUTPUT_DIR_NAME = "dtr_pass1_correlation"
 
 
-def plot_filename(num_bins: int) -> str:
-    return f"dtr_pass1_correlation_bins{num_bins}.png"
+def artifact_suffix(prefix_len: int | None) -> str:
+    if prefix_len is None:
+        return ""
+    return f"_prefix{prefix_len}"
 
 
-def summary_filename(num_bins: int) -> str:
-    return f"dtr_pass1_correlation_bins{num_bins}.json"
+def dtr_scope(prefix_len: int | None) -> str:
+    return "full" if prefix_len is None else "prefix"
+
+
+def plot_filename(num_bins: int, prefix_len: int | None = None) -> str:
+    return f"dtr_pass1_correlation{artifact_suffix(prefix_len)}_bins{num_bins}.png"
+
+
+def summary_filename(num_bins: int, prefix_len: int | None = None) -> str:
+    return f"dtr_pass1_correlation{artifact_suffix(prefix_len)}_bins{num_bins}.json"
 
 
 @dataclass(frozen=True)
@@ -66,6 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dtr-path", type=Path)
     parser.add_argument("--results-path", type=Path)
     parser.add_argument("--samples-path", type=Path)
+    parser.add_argument("--prefix-len", type=int)
     parser.add_argument("--num-bins", type=int, default=5)
     parser.add_argument("--output-plot", type=Path)
     parser.add_argument("--output-json", type=Path)
@@ -73,13 +86,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_output_plot_path(output_plot: Path | None, num_bins: int) -> Path | None:
+def resolve_output_plot_path(
+    output_plot: Path | None,
+    num_bins: int,
+    prefix_len: int | None,
+) -> Path | None:
     if output_plot is None:
         return None
 
     candidate = output_plot.resolve()
     if candidate.exists() and candidate.is_dir():
-        return candidate / plot_filename(num_bins)
+        return candidate / plot_filename(num_bins, prefix_len)
     if candidate.suffix:
         return candidate
     return candidate.with_suffix(".png")
@@ -92,13 +109,17 @@ def default_output_dir(run_dir: Path) -> Path:
 
 def resolve_paths(
     args: argparse.Namespace,
-) -> tuple[Path, Path, Path, Path | None, Path]:
+) -> tuple[Path | None, Path, Path, Path | None, Path]:
     run_dir = args.run_dir.resolve()
-    dtr_path = (
-        args.dtr_path.resolve()
-        if args.dtr_path is not None
-        else dtr_results_path(run_dir)
-    )
+    if args.dtr_path is not None and args.prefix_len is not None:
+        raise ValueError("cannot use --dtr-path together with --prefix-len")
+    dtr_path = None
+    if args.prefix_len is None:
+        dtr_path = (
+            args.dtr_path.resolve()
+            if args.dtr_path is not None
+            else dtr_results_path(run_dir)
+        )
     results_path = (
         args.results_path.resolve()
         if args.results_path is not None
@@ -113,14 +134,14 @@ def resolve_paths(
 
     output_dir = default_output_dir(run_dir)
     output_plot = (
-        resolve_output_plot_path(args.output_plot, args.num_bins)
+        resolve_output_plot_path(args.output_plot, args.num_bins, args.prefix_len)
         if args.output_plot is not None
-        else output_dir / plot_filename(args.num_bins)
+        else output_dir / plot_filename(args.num_bins, args.prefix_len)
     )
     output_json = (
         args.output_json.resolve()
         if args.output_json is not None
-        else output_dir / summary_filename(args.num_bins)
+        else output_dir / summary_filename(args.num_bins, args.prefix_len)
     )
     return dtr_path, results_path, samples_path, output_plot, output_json
 
@@ -131,6 +152,22 @@ def load_dtr_by_key(path: Path) -> dict[tuple[int, int], float]:
         (int(row["doc_id"]), int(row["repeat_index"])): float(row["dtr"])
         for row in rows
     }
+
+
+def load_prefix_dtr_by_key(
+    run_dir: Path,
+    *,
+    prefix_len: int,
+) -> dict[tuple[int, int], float]:
+    from src.experiment.think_n import load_prefix_dtr_rows
+
+    prefix_rows = load_prefix_dtr_rows(
+        run_dir=run_dir,
+        prefix_len=prefix_len,
+        g=DEFAULT_G,
+        rho=DEFAULT_RHO,
+    )
+    return {key: prefix_dtr for key, (prefix_dtr, _num_tokens) in prefix_rows.items()}
 
 
 def validate_supported_task(task_name: str) -> None:
@@ -239,10 +276,12 @@ def build_title(
     task_name: str,
     model_name: str,
     user_title: str | None,
+    prefix_len: int | None = None,
 ) -> str:
     if user_title is not None:
         return user_title
-    return f"{run_dir.name} | {task_name} | {model_name} | DTR vs Pass@1"
+    dtr_label = "DTR" if prefix_len is None else f"Prefix-{prefix_len} DTR"
+    return f"{run_dir.name} | {task_name} | {model_name} | {dtr_label} vs Pass@1"
 
 
 def write_summary_json(
@@ -250,19 +289,22 @@ def write_summary_json(
     run_dir: Path,
     task_name: str,
     model_name: str,
-    dtr_path: Path,
+    dtr_path: Path | None,
     results_path: Path,
     samples_path: Path,
     output_path: Path,
     rows: list[SequenceResult],
     bins: list[BinSummary],
     binned_pearson: float,
+    prefix_len: int | None = None,
 ) -> None:
     summary = {
         "run_dir": str(run_dir),
         "task": task_name,
         "model": model_name,
-        "dtr_path": str(dtr_path),
+        "dtr_path": None if dtr_path is None else str(dtr_path),
+        "dtr_scope": dtr_scope(prefix_len),
+        "prefix_len": prefix_len,
         "results_path": str(results_path),
         "samples_path": str(samples_path),
         "num_sequences": len(rows),
@@ -309,7 +351,11 @@ def main() -> None:
     model_name = resolve_model_identity(aggregated, run_dir)
     reasoning_tags = resolve_reasoning_tags(aggregated)
 
-    dtr_by_key = load_dtr_by_key(dtr_path)
+    if args.prefix_len is None:
+        assert dtr_path is not None
+        dtr_by_key = load_dtr_by_key(dtr_path)
+    else:
+        dtr_by_key = load_prefix_dtr_by_key(run_dir, prefix_len=args.prefix_len)
     rows = load_sequence_results(
         dtr_by_key,
         samples_path,
@@ -326,7 +372,13 @@ def main() -> None:
             bins=bins,
             pearson=binned_pearson,
             output_path=output_plot,
-            title=build_title(run_dir, task_name, model_name, args.title),
+            title=build_title(
+                run_dir,
+                task_name,
+                model_name,
+                args.title,
+                prefix_len=args.prefix_len,
+            ),
         )
     write_summary_json(
         run_dir=run_dir,
@@ -339,6 +391,7 @@ def main() -> None:
         rows=rows,
         bins=bins,
         binned_pearson=binned_pearson,
+        prefix_len=args.prefix_len,
     )
     print_summary(bins, binned_pearson)
     print(f"Saved summary: {output_json}")
