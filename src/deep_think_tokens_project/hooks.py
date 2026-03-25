@@ -101,6 +101,10 @@ class DeepThinkingTokensTracker(Tracker):
                 ).sum(dim=-1)
                 self.divergences[name].append(divergence.detach().cpu())
 
+            for layer, _ in self.logits_hooks.values():
+                if hasattr(layer, "_logits"):
+                    delattr(layer, "_logits")
+
         return aggregate_hook
 
     def collect(self) -> dict[str, torch.Tensor]:
@@ -124,7 +128,7 @@ def add_deep_thinking_tokens_hooks(
     @torch.no_grad()
     def layer_hook(module: nn.Module, _: tuple[Any, ...], output: Any) -> None:
         hidden = output[0] if isinstance(output, tuple) else output
-        module._logits = model.lm_head(hidden).detach().cpu()
+        module._logits = model.lm_head(hidden).detach()
 
     hooks: OrderedDict[
         str, tuple[nn.Module, torch.utils.hooks.RemovableHandle]

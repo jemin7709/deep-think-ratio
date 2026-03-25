@@ -21,8 +21,8 @@ from src.deep_think_tokens_project.io import tokenize_prompt_and_response
 from src.deep_think_tokens_project.utils import div_to_matrix
 
 
-DEFAULT_PREFILL_CHUNK_SIZE = 512
-DEFAULT_EXTRACT_CHUNK_SIZE = 128
+DEFAULT_PREFILL_CHUNK_SIZE = 4096
+DEFAULT_EXTRACT_CHUNK_SIZE = 1024
 
 
 def replay_tokens(
