@@ -305,16 +305,48 @@ class ThinkNExperimentTest(unittest.TestCase):
             bottom_payload = json.loads(bottom_summary_json.read_text(encoding="utf-8"))
 
             self.assertEqual(top_payload["summary"]["metrics"]["think_maj@2"], 1.0)
+            self.assertEqual(
+                top_payload["cost_definition"]["think_tokens"],
+                "sum_selected(min(prefix_len, full_num_tokens) + full_num_tokens)",
+            )
             self.assertEqual(top_payload["docs"][0]["selected_repeat_indices"], [0, 1])
             self.assertEqual(top_payload["docs"][0]["ranked_repeats"][0]["prefix_dtr"], 1.0)
+            self.assertEqual(
+                top_payload["docs"][0]["selection_stats"]["selected_mean_num_tokens"],
+                4.0,
+            )
+            self.assertTrue(
+                top_payload["docs"][0]["selection_stats"]["selected_majority_correct"]
+            )
+            self.assertEqual(
+                top_payload["summary"]["cost"]["mean_selected_tokens_per_selected_repeat"],
+                4.0,
+            )
             self.assertEqual(top_payload["p"], 0.9)
             self.assertEqual(top_payload["rho"], 0.9)
             self.assertEqual(top_summary_json.parent.name, "prefix2_top2of4_g0.5_p0.9")
 
             self.assertEqual(bottom_payload["summary"]["metrics"]["bottom_maj@2"], 0.0)
             self.assertEqual(
+                bottom_payload["cost_definition"]["bottom_tokens"],
+                "sum_selected(min(prefix_len, full_num_tokens) + full_num_tokens)",
+            )
+            self.assertEqual(
                 bottom_payload["docs"][0]["selected_repeat_indices"],
                 [2, 3],
+            )
+            self.assertEqual(
+                bottom_payload["docs"][0]["selection_stats"]["selected_mean_num_tokens"],
+                4.0,
+            )
+            self.assertFalse(
+                bottom_payload["docs"][0]["selection_stats"]["selected_majority_correct"]
+            )
+            self.assertEqual(
+                bottom_payload["summary"]["cost"][
+                    "mean_selected_tokens_per_selected_repeat"
+                ],
+                4.0,
             )
             self.assertEqual(
                 bottom_summary_json.parent.name,

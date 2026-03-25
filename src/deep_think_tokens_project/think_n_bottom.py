@@ -16,6 +16,8 @@ from src.deep_think_tokens_project.think_n import DEFAULT_G
 from src.deep_think_tokens_project.think_n import DEFAULT_P
 from src.deep_think_tokens_project.think_n import DocResult
 from src.deep_think_tokens_project.think_n import RepeatRecord
+from src.deep_think_tokens_project.think_n import build_cost_definition
+from src.deep_think_tokens_project.think_n import build_selection_stats
 from src.deep_think_tokens_project.think_n import build_repetition_metrics
 from src.deep_think_tokens_project.think_n import load_prefix_dtr_rows
 from src.deep_think_tokens_project.think_n import load_sample_rows
@@ -150,24 +152,29 @@ def build_doc_result(
     ]
     selected_completions = [completions[index] for index in selected_repeat_indices]
 
-    full_cost = sum(record.full_num_tokens for record in ranked_repeats)
-    prefix_cost = sum(
+    full_prefix_cost = sum(
         min(prefix_len, record.full_num_tokens) for record in ranked_repeats
     )
-    continuation_cost = sum(
-        max(record.full_num_tokens - prefix_len, 0)
+    full_completion_cost = sum(record.full_num_tokens for record in ranked_repeats)
+    full_cost = full_prefix_cost + full_completion_cost
+    prefix_cost = sum(
+        min(prefix_len, record.full_num_tokens)
         for record in ranked_repeats
         if record.selected
     )
-    think_cost = prefix_cost + continuation_cost
+    completion_cost = sum(
+        record.full_num_tokens for record in ranked_repeats if record.selected
+    )
+    bottom_cost = prefix_cost + completion_cost
 
+    bottom_maj = score_maj_at_n(
+        target,
+        selected_completions,
+        n=selected_count,
+        reasoning_tags=reasoning_tags,
+    )
     metrics = {
-        f"bottom_maj@{selected_count}": score_maj_at_n(
-            target,
-            selected_completions,
-            n=selected_count,
-            reasoning_tags=reasoning_tags,
-        ),
+        f"bottom_maj@{selected_count}": bottom_maj,
         f"cons_maj@{repeats}": score_maj_at_n(
             target,
             completions,
@@ -194,12 +201,16 @@ def build_doc_result(
         target=target,
         selected_repeat_indices=selected_repeat_indices,
         ranked_repeats=ranked_repeats,
+        selection_stats=build_selection_stats(
+            ranked_repeats=ranked_repeats,
+            selected_majority_score=bottom_maj,
+        ),
         metrics=metrics,
         cost={
             "full_tokens": full_cost,
             "prefix_tokens": prefix_cost,
-            "continuation_tokens": continuation_cost,
-            "think_tokens": think_cost,
+            "completion_tokens": completion_cost,
+            "bottom_tokens": bottom_cost,
         },
     )
 
@@ -225,15 +236,30 @@ def summarize_doc_results(
     }
     metrics["num_docs"] = len(doc_results)
     total_full_tokens = sum(result.cost["full_tokens"] for result in doc_results)
-    total_think_tokens = sum(result.cost["think_tokens"] for result in doc_results)
-    saved_tokens = total_full_tokens - total_think_tokens
+    total_bottom_tokens = sum(result.cost["bottom_tokens"] for result in doc_results)
+    total_selected_tokens = sum(
+        record.full_num_tokens
+        for result in doc_results
+        for record in result.ranked_repeats
+        if record.selected
+    )
+    selected_repeat_count = sum(
+        1
+        for result in doc_results
+        for record in result.ranked_repeats
+        if record.selected
+    )
+    saved_tokens = total_full_tokens - total_bottom_tokens
     return {
         "metrics": metrics,
         "cost": {
             "total_full_tokens": total_full_tokens,
-            "total_think_tokens": total_think_tokens,
+            "total_bottom_tokens": total_bottom_tokens,
             "mean_full_tokens_per_doc": total_full_tokens / len(doc_results),
-            "mean_think_tokens_per_doc": total_think_tokens / len(doc_results),
+            "mean_bottom_tokens_per_doc": total_bottom_tokens / len(doc_results),
+            "mean_selected_tokens_per_selected_repeat": (
+                total_selected_tokens / selected_repeat_count
+            ),
             "saved_tokens": saved_tokens,
             "saved_pct": saved_tokens / total_full_tokens if total_full_tokens else 0.0,
         },
@@ -256,6 +282,7 @@ def render_summary(
     p: float,
     summary: dict,
 ) -> str:
+    base_cost_definition = build_cost_definition()
     bottom_key = f"bottom_maj@{selected_count}"
     cons_key = f"cons_maj@{repeats}"
     mean_key = f"mean_avg@{repeats}"
@@ -273,11 +300,21 @@ def render_summary(
         f"delta_vs_cons_maj: {summary['delta']['vs_cons_maj']:.6f}",
         f"delta_vs_mean_avg: {summary['delta']['vs_mean_avg']:.6f}",
         f"total_full_tokens: {summary['cost']['total_full_tokens']}",
-        f"total_think_tokens: {summary['cost']['total_think_tokens']}",
+        f"total_bottom_tokens: {summary['cost']['total_bottom_tokens']}",
         f"mean_full_tokens_per_doc: {summary['cost']['mean_full_tokens_per_doc']:.6f}",
-        f"mean_think_tokens_per_doc: {summary['cost']['mean_think_tokens_per_doc']:.6f}",
+        f"mean_bottom_tokens_per_doc: {summary['cost']['mean_bottom_tokens_per_doc']:.6f}",
+        "mean_selected_tokens_per_selected_repeat: "
+        f"{summary['cost']['mean_selected_tokens_per_selected_repeat']:.6f}",
         f"saved_tokens: {summary['cost']['saved_tokens']}",
         f"saved_pct: {summary['cost']['saved_pct']:.6%}",
+        f"cost_formula_full_tokens: {base_cost_definition['full_tokens']}",
+        "cost_formula_bottom_tokens: "
+        "sum_selected(min(prefix_len, full_num_tokens) + full_num_tokens)",
+        "cost_formula_mean_full_tokens_per_doc: "
+        f"{base_cost_definition['mean_full_tokens_per_doc']}",
+        "cost_formula_mean_bottom_tokens_per_doc: total_bottom_tokens / num_docs",
+        "cost_formula_mean_selected_tokens_per_selected_repeat: "
+        f"{base_cost_definition['mean_selected_tokens_per_selected_repeat']}",
     ]
     for scope in ("selected", "full"):
         for level in REP_LEVELS:
@@ -358,6 +395,13 @@ def run_experiment(
         "g": g,
         "p": p,
         "rho": p,
+        "cost_definition": {
+            **build_cost_definition(),
+            "bottom_tokens": (
+                "sum_selected(min(prefix_len, full_num_tokens) + full_num_tokens)"
+            ),
+            "mean_bottom_tokens_per_doc": "total_bottom_tokens / num_docs",
+        },
         "summary": summary,
         "docs": [
             {
@@ -365,6 +409,7 @@ def run_experiment(
                 "target": result.target,
                 "selected_repeat_indices": result.selected_repeat_indices,
                 "ranked_repeats": [asdict(record) for record in result.ranked_repeats],
+                "selection_stats": asdict(result.selection_stats),
                 "metrics": result.metrics,
                 "cost": result.cost,
             }

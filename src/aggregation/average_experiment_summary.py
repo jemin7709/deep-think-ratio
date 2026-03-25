@@ -64,10 +64,13 @@ def _cost_sort_key(key: str) -> tuple[int, str]:
     order = {
         "total_full_tokens": 0,
         "total_think_tokens": 1,
+        "total_bottom_tokens": 1,
         "mean_full_tokens_per_doc": 2,
         "mean_think_tokens_per_doc": 3,
-        "saved_tokens": 4,
-        "saved_pct": 5,
+        "mean_bottom_tokens_per_doc": 3,
+        "mean_selected_tokens_per_selected_repeat": 4,
+        "saved_tokens": 5,
+        "saved_pct": 6,
     }
     return (order.get(key, 99), key)
 
