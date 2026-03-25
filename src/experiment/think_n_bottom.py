@@ -122,9 +122,9 @@ def build_ranked_repeats(
         prefix_dtr, full_num_tokens = prefix_rows[key]
         ranking_basis.append((repeat_index, prefix_dtr, full_num_tokens))
 
-    ranking_basis.sort(key=lambda item: (item[1], item[0]))
+    ranking_basis.sort(key=lambda item: (-item[1], item[0]))
     selected_repeat_indices = {
-        repeat_index for repeat_index, _, _ in ranking_basis[:selected_count]
+        repeat_index for repeat_index, _, _ in ranking_basis[-selected_count:]
     }
 
     ranked_repeats: list[RepeatRecord] = []

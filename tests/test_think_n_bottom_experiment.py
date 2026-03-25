@@ -182,8 +182,8 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             self.assertEqual(payload["summary"]["metrics"]["mean_avg@4"], 0.5)
             self.assertEqual(payload["summary"]["delta"]["vs_mean_avg"], -0.5)
             self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [2, 3])
-            self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["repeat_index"], 2)
-            self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["prefix_dtr"], 0.0)
+            self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["repeat_index"], 0)
+            self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["prefix_dtr"], 1.0)
             self.assertEqual(
                 payload["docs"][0]["selection_stats"]["selected_mean_num_tokens"],
                 5.0,
@@ -247,7 +247,7 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             )
 
             payload = json.loads(summary_json.read_text(encoding="utf-8"))
-            self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [0, 1])
+            self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [2, 3])
 
     @patch("transformers.AutoTokenizer.from_pretrained", return_value=FakeTokenizer())
     def test_run_experiment_sets_rep_n_zero_for_short_sequences(self, _tokenizer_mock):
@@ -288,7 +288,7 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
                 payload["docs"][0]["selection_stats"]["selected_mean_num_tokens"],
                 1.0,
             )
-            self.assertTrue(
+            self.assertFalse(
                 payload["docs"][0]["selection_stats"]["selected_majority_correct"]
             )
             self.assertEqual(payload["docs"][0]["metrics"]["selected_token_rep_2"], 0.0)
