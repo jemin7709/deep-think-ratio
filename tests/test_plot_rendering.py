@@ -5,6 +5,8 @@ from pathlib import Path
 
 import torch
 
+from src.plot.dtr_length_scatter import _expand_axis_range
+from src.plot.dtr_length_scatter import plot_to_png as plot_dtr_length_scatter_to_png
 from src.plot.dtr_pass1_correlation import plot_to_png
 from src.plot.jsd_heatmap import render_heatmap
 
@@ -16,7 +18,19 @@ class CorrelationBin:
     pass_at_1: float
 
 
+@dataclass(frozen=True)
+class ScatterPoint:
+    dtr: float
+    response_length: int
+
+
 class PlotRenderingTest(unittest.TestCase):
+    def test_expand_axis_range_can_clamp_lower_bound(self):
+        low, high = _expand_axis_range(895.0, 26095.0, 1.0, clamp_low=0.0)
+
+        self.assertEqual(low, 0.0)
+        self.assertGreater(high, 26095.0)
+
     def test_plot_to_png_writes_dtr_correlation_png(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "plot.png"
@@ -30,6 +44,25 @@ class PlotRenderingTest(unittest.TestCase):
                 pearson=1.0,
                 output_path=output_path,
                 title="DTR vs Pass@1",
+            )
+
+            self.assertTrue(output_path.is_file())
+            self.assertGreater(output_path.stat().st_size, 0)
+
+    def test_plot_to_png_writes_dtr_length_scatter_png(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "scatter.png"
+            points = [
+                ScatterPoint(dtr=0.2, response_length=12),
+                ScatterPoint(dtr=0.5, response_length=18),
+                ScatterPoint(dtr=0.8, response_length=30),
+            ]
+
+            plot_dtr_length_scatter_to_png(
+                points=points,
+                pearson=0.98,
+                output_path=output_path,
+                title="DTR vs Response Length",
             )
 
             self.assertTrue(output_path.is_file())
