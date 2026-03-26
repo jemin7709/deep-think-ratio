@@ -10,34 +10,93 @@ from pathlib import Path
 from statistics import fmean
 
 from src.deep_think_tokens_project.io import dtr_results_path
+from src.deep_think_tokens_project.io import jsd_output_dir
 from src.deep_think_tokens_project.io import latest_matching_file
 from src.deep_think_tokens_project.io import load_aggregated_results
 from src.deep_think_tokens_project.utils import DEFAULT_G
 from src.deep_think_tokens_project.utils import DEFAULT_P
+from src.deep_think_tokens_project.utils import compute_dtr_from_divergence_matrix
 from src.plot.dtr_pass1_correlation import plot_to_png
 from tasks.aime24.metrics import TASK_NAME, infer_task_name
 from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags, score_match
+
+import torch
 
 
 DEFAULT_OUTPUT_DIR_NAME = "dtr_pass1_correlation"
 
 
-def artifact_suffix(prefix_len: int | None) -> str:
+@dataclass(frozen=True)
+class DtrRecord:
+    """DTR JSON 한 행에서 correlation에 필요한 값만 보존한다."""
+
+    dtr: float
+    num_tokens: int | None = None
+
+
+def prefix_suffix(prefix_len: int | None) -> str:
     if prefix_len is None:
         return ""
     return f"_prefix{prefix_len}"
 
 
-def dtr_scope(prefix_len: int | None) -> str:
-    return "full" if prefix_len is None else "prefix"
+def token_filter_suffix(
+    start_token: int | None,
+    end_token: int | None,
+) -> str:
+    if start_token is None and end_token is None:
+        return ""
+    if start_token is None:
+        start_token = 0
+    if end_token is not None:
+        return f"_tokens{start_token}to{end_token - 1}"
+    return f"_tokens{start_token}plus"
 
 
-def plot_filename(num_bins: int, prefix_len: int | None = None) -> str:
-    return f"dtr_pass1_correlation{artifact_suffix(prefix_len)}_bins{num_bins}.png"
+def artifact_suffix(
+    prefix_len: int | None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+) -> str:
+    return prefix_suffix(prefix_len) + token_filter_suffix(start_token, end_token)
 
 
-def summary_filename(num_bins: int, prefix_len: int | None = None) -> str:
-    return f"dtr_pass1_correlation{artifact_suffix(prefix_len)}_bins{num_bins}.json"
+def dtr_scope(
+    prefix_len: int | None,
+    start_token: int | None,
+    end_token: int | None,
+) -> str:
+    if prefix_len is not None:
+        return "prefix"
+    if start_token is None and end_token is None:
+        return "full"
+    return "window"
+
+
+def plot_filename(
+    num_bins: int,
+    prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+) -> str:
+    return (
+        "dtr_pass1_correlation"
+        f"{artifact_suffix(prefix_len, start_token, end_token)}"
+        f"_bins{num_bins}.png"
+    )
+
+
+def summary_filename(
+    num_bins: int,
+    prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+) -> str:
+    return (
+        "dtr_pass1_correlation"
+        f"{artifact_suffix(prefix_len, start_token, end_token)}"
+        f"_bins{num_bins}.json"
+    )
 
 
 @dataclass(frozen=True)
@@ -46,6 +105,7 @@ class SequenceResult:
     repeat_index: int
     dtr: float
     pass_at_1: float
+    num_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +132,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--g", type=float, default=DEFAULT_G)
     parser.add_argument("--p", type=float, default=DEFAULT_P)
     parser.add_argument("--num-bins", type=int, default=5)
+    parser.add_argument("--start-token", type=int)
+    parser.add_argument("--end-token", type=int)
     parser.add_argument("--output-plot", type=Path)
     parser.add_argument("--output-json", type=Path)
     parser.add_argument("--title")
@@ -86,25 +148,61 @@ def resolve_output_plot_path(
     output_plot: Path | None,
     num_bins: int,
     prefix_len: int | None,
+    start_token: int | None,
+    end_token: int | None,
 ) -> Path | None:
     if output_plot is None:
         return None
     candidate = output_plot.resolve()
     if candidate.exists() and candidate.is_dir():
-        return candidate / plot_filename(num_bins, prefix_len)
+        return candidate / plot_filename(
+            num_bins,
+            prefix_len,
+            start_token,
+            end_token,
+        )
     if candidate.suffix:
         return candidate
     return candidate.with_suffix(".png")
+
+
+def validate_token_window(
+    prefix_len: int | None,
+    start_token: int | None,
+    end_token: int | None,
+    dtr_path: Path | None,
+) -> None:
+    if start_token is not None and start_token < 0:
+        raise ValueError(f"start_token must be non-negative, got {start_token}")
+    if end_token is not None and end_token < 1:
+        raise ValueError(f"end_token must be >= 1, got {end_token}")
+    if prefix_len is not None and (start_token is not None or end_token is not None):
+        raise ValueError("cannot combine --prefix-len with --start-token/--end-token")
+    if dtr_path is not None and (
+        prefix_len is not None or start_token is not None or end_token is not None
+    ):
+        raise ValueError(
+            "cannot use --dtr-path together with --prefix-len/--start-token/--end-token"
+        )
+    if (
+        start_token is not None
+        and end_token is not None
+        and start_token >= end_token
+    ):
+        raise ValueError(
+            f"start_token must be < end_token, got {start_token} >= {end_token}"
+        )
 
 
 def resolve_paths(
     args: argparse.Namespace,
 ) -> tuple[Path | None, Path, Path, Path | None, Path]:
     run_dir = args.run_dir.resolve()
-    if args.dtr_path is not None and args.prefix_len is not None:
-        raise ValueError("cannot use --dtr-path together with --prefix-len")
+    start_token = getattr(args, "start_token", None)
+    end_token = getattr(args, "end_token", None)
+    validate_token_window(args.prefix_len, start_token, end_token, args.dtr_path)
     dtr_path = None
-    if args.prefix_len is None:
+    if args.prefix_len is None and start_token is None and end_token is None:
         dtr_path = (
             args.dtr_path.resolve()
             if args.dtr_path is not None
@@ -124,22 +222,41 @@ def resolve_paths(
 
     output_dir = default_output_dir(run_dir)
     output_plot = (
-        resolve_output_plot_path(args.output_plot, args.num_bins, args.prefix_len)
+        resolve_output_plot_path(
+            args.output_plot,
+            args.num_bins,
+            args.prefix_len,
+            start_token,
+            end_token,
+        )
         if args.output_plot is not None
-        else output_dir / plot_filename(args.num_bins, args.prefix_len)
+        else output_dir
+        / plot_filename(args.num_bins, args.prefix_len, start_token, end_token)
     )
     output_json = (
         args.output_json.resolve()
         if args.output_json is not None
-        else output_dir / summary_filename(args.num_bins, args.prefix_len)
+        else output_dir
+        / summary_filename(args.num_bins, args.prefix_len, start_token, end_token)
     )
     return dtr_path, results_path, samples_path, output_plot, output_json
 
 
 def load_dtr_by_key(path: Path) -> dict[tuple[int, int], float]:
+    return {
+        key: row.dtr for key, row in load_dtr_records_by_key(path).items()
+    }
+
+
+def load_dtr_records_by_key(path: Path) -> dict[tuple[int, int], DtrRecord]:
     rows = json.loads(path.read_text(encoding="utf-8"))
     return {
-        (int(row["doc_id"]), int(row["repeat_index"])): float(row["dtr"])
+        (int(row["doc_id"]), int(row["repeat_index"])): DtrRecord(
+            dtr=float(row["dtr"]),
+            num_tokens=(
+                None if "num_tokens" not in row else int(row["num_tokens"])
+            ),
+        )
         for row in rows
     }
 
@@ -151,6 +268,24 @@ def load_prefix_dtr_by_key(
     g: float,
     p: float,
 ) -> dict[tuple[int, int], float]:
+    return {
+        key: row.dtr
+        for key, row in load_prefix_dtr_records_by_key(
+            run_dir,
+            prefix_len=prefix_len,
+            g=g,
+            p=p,
+        ).items()
+    }
+
+
+def load_prefix_dtr_records_by_key(
+    run_dir: Path,
+    *,
+    prefix_len: int,
+    g: float,
+    p: float,
+) -> dict[tuple[int, int], DtrRecord]:
     from src.deep_think_tokens_project.think_n import load_prefix_dtr_rows
 
     prefix_rows = load_prefix_dtr_rows(
@@ -159,7 +294,44 @@ def load_prefix_dtr_by_key(
         g=g,
         p=p,
     )
-    return {key: prefix_dtr for key, (prefix_dtr, _num_tokens) in prefix_rows.items()}
+    return {
+        key: DtrRecord(dtr=prefix_dtr, num_tokens=full_num_tokens)
+        for key, (prefix_dtr, full_num_tokens) in prefix_rows.items()
+    }
+
+
+def load_window_dtr_records_by_key(
+    run_dir: Path,
+    *,
+    start_token: int,
+    end_token: int | None,
+    g: float,
+    p: float,
+) -> dict[tuple[int, int], DtrRecord]:
+    matrix_dir = jsd_output_dir(run_dir)
+    matrix_paths = sorted(matrix_dir.glob("doc*_rep*.pt"))
+    if not matrix_paths:
+        raise FileNotFoundError(f"no divergence caches found under {matrix_dir}")
+
+    window_dtr_by_key: dict[tuple[int, int], DtrRecord] = {}
+    for matrix_path in matrix_paths:
+        matrix_payload = torch.load(matrix_path, map_location="cpu", weights_only=False)
+        divergence_matrix = torch.as_tensor(matrix_payload["divergence_matrix"])
+        stop = divergence_matrix.shape[1] if end_token is None else min(
+            end_token, divergence_matrix.shape[1]
+        )
+        if start_token >= stop:
+            raise ValueError(
+                f"token window [{start_token}, {stop}) is empty for {matrix_path}"
+            )
+        window_matrix = divergence_matrix[:, start_token:stop]
+        dtr_result = compute_dtr_from_divergence_matrix(window_matrix, g=g, p=p)
+        key = (int(matrix_payload["doc_id"]), int(matrix_payload["repeat_index"]))
+        window_dtr_by_key[key] = DtrRecord(
+            dtr=float(dtr_result.dtr),
+            num_tokens=int(matrix_payload["num_tokens"]),
+        )
+    return window_dtr_by_key
 
 
 def validate_supported_task(task_name: str) -> None:
@@ -174,6 +346,7 @@ def load_sequence_results(
     samples_path: Path,
     *,
     reasoning_tags: list[tuple[str, str]] | None,
+    num_tokens_by_key: dict[tuple[int, int], int | None] | None = None,
 ) -> list[SequenceResult]:
     rows: list[SequenceResult] = []
     seen_keys: set[tuple[int, int]] = set()
@@ -201,6 +374,11 @@ def load_sequence_results(
                             target,
                             response,
                             reasoning_tags=reasoning_tags,
+                        ),
+                        num_tokens=(
+                            None
+                            if num_tokens_by_key is None
+                            else num_tokens_by_key[key]
                         ),
                     )
                 )
@@ -265,11 +443,19 @@ def build_title(
     model_name: str,
     user_title: str | None,
     prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
 ) -> str:
     if user_title is not None:
         return user_title
     dtr_label = "DTR" if prefix_len is None else f"Prefix-{prefix_len} DTR"
-    return f"{run_dir.name} | {task_name} | {model_name} | {dtr_label} vs Pass@1"
+    title = f"{run_dir.name} | {task_name} | {model_name} | {dtr_label} vs Pass@1"
+    if start_token is None and end_token is None:
+        return title
+    window_start = 0 if start_token is None else start_token
+    if end_token is None:
+        return f"{title} | tokens {window_start}+"
+    return f"{title} | tokens {window_start}-{end_token - 1}"
 
 
 def write_summary_json(
@@ -285,14 +471,21 @@ def write_summary_json(
     bins: list[BinSummary],
     binned_pearson: float,
     prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
 ) -> None:
+    token_lengths: list[int] = [
+        row.num_tokens for row in rows if row.num_tokens is not None
+    ]
     summary = {
         "run_dir": str(run_dir),
         "task": task_name,
         "model": model_name,
         "dtr_path": None if dtr_path is None else str(dtr_path),
-        "dtr_scope": dtr_scope(prefix_len),
+        "dtr_scope": dtr_scope(prefix_len, start_token, end_token),
         "prefix_len": prefix_len,
+        "start_token": start_token,
+        "end_token": end_token,
         "results_path": str(results_path),
         "samples_path": str(samples_path),
         "num_sequences": len(rows),
@@ -304,6 +497,10 @@ def write_summary_json(
         ),
         "bins": [asdict(entry) for entry in bins],
     }
+    if token_lengths:
+        summary["token_length_min"] = min(token_lengths)
+        summary["token_length_max"] = max(token_lengths)
+        summary["token_length_mean"] = fmean(token_lengths)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
@@ -337,20 +534,33 @@ def main() -> None:
     validate_supported_task(task_name)
     model_name = resolve_model_identity(aggregated, run_dir)
     reasoning_tags = resolve_reasoning_tags(aggregated)
-    if args.prefix_len is None:
+    if args.prefix_len is None and args.start_token is None and args.end_token is None:
         assert dtr_path is not None
-        dtr_by_key = load_dtr_by_key(dtr_path)
-    else:
-        dtr_by_key = load_prefix_dtr_by_key(
+        dtr_records_by_key = load_dtr_records_by_key(dtr_path)
+    elif args.prefix_len is not None:
+        dtr_records_by_key = load_prefix_dtr_records_by_key(
             run_dir,
             prefix_len=args.prefix_len,
             g=args.g,
             p=args.p,
         )
+    else:
+        dtr_records_by_key = load_window_dtr_records_by_key(
+            run_dir,
+            start_token=0 if args.start_token is None else args.start_token,
+            end_token=args.end_token,
+            g=args.g,
+            p=args.p,
+        )
+    dtr_by_key = {key: row.dtr for key, row in dtr_records_by_key.items()}
+    num_tokens_by_key = {
+        key: row.num_tokens for key, row in dtr_records_by_key.items()
+    }
     rows = load_sequence_results(
         dtr_by_key,
         samples_path,
         reasoning_tags=reasoning_tags,
+        num_tokens_by_key=num_tokens_by_key,
     )
     bins = make_bins(rows, args.num_bins)
     binned_pearson = pearson_r(
@@ -369,6 +579,8 @@ def main() -> None:
                 model_name,
                 args.title,
                 prefix_len=args.prefix_len,
+                start_token=args.start_token,
+                end_token=args.end_token,
             ),
         )
     write_summary_json(
@@ -383,6 +595,8 @@ def main() -> None:
         bins=bins,
         binned_pearson=binned_pearson,
         prefix_len=args.prefix_len,
+        start_token=args.start_token,
+        end_token=args.end_token,
     )
     print_summary(bins, binned_pearson)
     print(f"Saved summary: {output_json}")

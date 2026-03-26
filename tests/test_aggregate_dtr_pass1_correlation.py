@@ -22,6 +22,8 @@ def write_summary(
     model: str = "openai/gpt-oss-120b",
     dtr_scope: str = "full",
     prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
     bins: list[dict] | None = None,
 ) -> None:
     payload = {
@@ -30,6 +32,8 @@ def write_summary(
         "model": model,
         "dtr_scope": dtr_scope,
         "prefix_len": prefix_len,
+        "start_token": start_token,
+        "end_token": end_token,
         "dtr_path": f"{run_dir}/dtr/dtr_g0.5_rho0.85.json",
         "results_path": f"{run_dir}/results_2026-03-22.json",
         "samples_path": f"{run_dir}/samples_aime24_custom_2026-03-22.jsonl",
@@ -163,6 +167,61 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
             self.assertEqual(summaries[0].dtr_scope, "prefix")
             self.assertEqual(summaries[0].prefix_len, 2)
 
+    def test_load_source_summaries_filters_by_token_window(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            full_path = root / "full.json"
+            window_path = root / "window.json"
+            write_summary(full_path, run_dir="/tmp/run-full")
+            write_summary(
+                window_path,
+                run_dir="/tmp/run-window",
+                dtr_scope="window",
+                start_token=50,
+                end_token=None,
+            )
+
+            summaries = load_source_summaries(
+                [full_path, window_path],
+                start_token=50,
+                end_token=None,
+            )
+
+            self.assertEqual([summary.run_dir for summary in summaries], [Path("/tmp/run-window")])
+            self.assertEqual(summaries[0].dtr_scope, "window")
+            self.assertEqual(summaries[0].start_token, 50)
+            self.assertIsNone(summaries[0].end_token)
+
+    def test_load_source_summaries_filters_by_num_bins(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bins2_path = root / "bins2.json"
+            bins3_path = root / "bins3.json"
+            write_summary(bins2_path, run_dir="/tmp/run-bins2")
+            write_summary(bins3_path, run_dir="/tmp/run-bins3")
+            payload = json.loads(bins3_path.read_text(encoding="utf-8"))
+            payload["num_bins"] = 3
+            payload["bins"].append(
+                {
+                    "bin_index": 3,
+                    "count": 2,
+                    "rank_start": 5,
+                    "rank_end": 6,
+                    "dtr_min": 0.9,
+                    "dtr_max": 1.0,
+                    "mean_dtr": 0.95,
+                    "pass_at_1": 1.0,
+                }
+            )
+            bins3_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            summaries = load_source_summaries(
+                [bins2_path, bins3_path],
+                num_bins=2,
+            )
+
+            self.assertEqual([summary.run_dir for summary in summaries], [Path("/tmp/run-bins2")])
+
     def test_write_aggregated_json_emits_expected_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -186,6 +245,8 @@ class AggregateDtrPass1CorrelationTest(unittest.TestCase):
             self.assertEqual(payload["task"], "aime24_custom")
             self.assertEqual(payload["dtr_scope"], "full")
             self.assertIsNone(payload["prefix_len"])
+            self.assertIsNone(payload["start_token"])
+            self.assertIsNone(payload["end_token"])
             self.assertEqual(payload["source_count"], 1)
             self.assertEqual(payload["run_dirs"], ["/tmp/run"])
             self.assertEqual(output_path.name, aggregated_json_name(2))

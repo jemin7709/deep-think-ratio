@@ -8,8 +8,9 @@ from unittest.mock import patch
 import torch
 
 from src.deep_think_tokens_project.dtr_pass1_correlation import resolve_paths
-from src.deep_think_tokens_project.dtr_pass1_correlation import load_dtr_by_key
 from src.deep_think_tokens_project.dtr_pass1_correlation import load_prefix_dtr_by_key
+from src.deep_think_tokens_project.dtr_pass1_correlation import load_window_dtr_records_by_key
+from src.deep_think_tokens_project.dtr_pass1_correlation import load_dtr_records_by_key
 from src.deep_think_tokens_project.dtr_pass1_correlation import load_sequence_results
 from src.deep_think_tokens_project.dtr_pass1_correlation import make_bins
 from src.deep_think_tokens_project.dtr_pass1_correlation import pearson_r
@@ -439,6 +440,50 @@ class CorrelationPathsTest(unittest.TestCase):
                 / "dtr_pass1_correlation_prefix2_bins5.json",
             )
 
+    def test_resolve_paths_uses_window_suffix_for_corr(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            (run_dir / "results_2026-03-25T00-00-00.json").write_text(
+                json.dumps(results_payload(repeats=4)),
+                encoding="utf-8",
+            )
+            (run_dir / "samples_aime24_custom_2026-03-25T00-00-00.jsonl").write_text(
+                "{}\n",
+                encoding="utf-8",
+            )
+
+            _dtr_path, _results_path, _samples_path, output_plot, output_json = (
+                resolve_paths(
+                    Namespace(
+                        run_dir=run_dir,
+                        dtr_path=None,
+                        results_path=None,
+                        samples_path=None,
+                        prefix_len=None,
+                        g=0.5,
+                        p=0.9,
+                        num_bins=5,
+                        start_token=50,
+                        end_token=None,
+                        output_plot=None,
+                        output_json=None,
+                    )
+                )
+            )
+
+            self.assertEqual(
+                output_plot,
+                run_dir
+                / "dtr_pass1_correlation"
+                / "dtr_pass1_correlation_tokens50plus_bins5.png",
+            )
+            self.assertEqual(
+                output_json,
+                run_dir
+                / "dtr_pass1_correlation"
+                / "dtr_pass1_correlation_tokens50plus_bins5.json",
+            )
+
     def test_resolve_paths_rejects_prefix_len_with_dtr_path(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = Path(tmpdir)
@@ -514,8 +559,17 @@ class CorrelationPathsTest(unittest.TestCase):
             self.assertEqual(resolved_dtr_path, dtr_path)
             assert resolved_dtr_path is not None
 
-            dtr_by_key = load_dtr_by_key(resolved_dtr_path)
-            rows = load_sequence_results(dtr_by_key, samples_path, reasoning_tags=None)
+            dtr_records_by_key = load_dtr_records_by_key(resolved_dtr_path)
+            rows = load_sequence_results(
+                {key: row.dtr for key, row in dtr_records_by_key.items()},
+                samples_path,
+                reasoning_tags=None,
+                num_tokens_by_key={
+                    key: row.num_tokens
+                    for key, row in dtr_records_by_key.items()
+                    if row.num_tokens is not None
+                },
+            )
             self.assertEqual([row.dtr for row in rows], [0.0, 0.0, 0.5, 1.0])
 
             bins = make_bins(rows, 2)
@@ -545,10 +599,14 @@ class CorrelationPathsTest(unittest.TestCase):
             self.assertEqual(payload["dtr_path"], str(resolved_dtr_path))
             self.assertEqual(payload["dtr_scope"], "full")
             self.assertIsNone(payload["prefix_len"])
+            self.assertIsNone(payload["start_token"])
+            self.assertIsNone(payload["end_token"])
             self.assertEqual(payload["num_sequences"], 4)
             self.assertEqual(payload["num_bins"], 2)
             self.assertEqual(payload["pearson_r_binned"], 1.0)
             self.assertEqual(payload["bins"][0]["mean_dtr"], 0.0)
+            self.assertEqual(payload["token_length_min"], 4)
+            self.assertEqual(payload["token_length_max"], 4)
 
     def test_correlation_core_path_loads_prefix_dtr_bins(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -595,6 +653,39 @@ class CorrelationPathsTest(unittest.TestCase):
             self.assertEqual(prefix_dtr_by_key[(0, 1)], 0.5)
             self.assertEqual(prefix_dtr_by_key[(0, 2)], 0.0)
             self.assertEqual(prefix_dtr_by_key[(0, 3)], 0.0)
+
+    def test_load_window_dtr_records_by_key_reads_suffix_tokens(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            matrix_dir = jsd_output_dir(run_dir)
+            matrix_dir.mkdir(parents=True)
+            torch.save(
+                {
+                    "doc_id": 0,
+                    "repeat_index": 0,
+                    "num_tokens": 4,
+                    "divergence_matrix": torch.tensor(
+                        [
+                            [0.9, 0.9, 0.1, 0.1],
+                            [0.8, 0.8, 0.1, 0.1],
+                            [0.4, 0.4, 0.1, 0.1],
+                        ],
+                        dtype=torch.float32,
+                    ),
+                },
+                matrix_dir / "doc0_rep0.pt",
+            )
+
+            window_dtr_by_key = load_window_dtr_records_by_key(
+                run_dir,
+                start_token=2,
+                end_token=None,
+                g=0.5,
+                p=0.9,
+            )
+
+            self.assertAlmostEqual(window_dtr_by_key[(0, 0)].dtr, 0.0)
+            self.assertEqual(window_dtr_by_key[(0, 0)].num_tokens, 4)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from src.aggregation.dtr_pass1_correlation import (
     default_output_dir,
     load_dtr_by_key,
     load_prefix_dtr_by_key,
+    load_window_dtr_records_by_key,
     load_sequence_results,
     make_bins,
     pearson_r,
@@ -239,6 +240,47 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
                 default_output_dir(run_dir) / summary_filename(7, prefix_len=3),
             )
 
+    def test_resolve_paths_uses_window_suffix(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            results_path = run_dir / "results_2026-03-22T00-00-00.json"
+            samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
+            results_path.write_text(
+                json.dumps({"results": {"aime24_custom": {}}}), encoding="utf-8"
+            )
+            samples_path.write_text("", encoding="utf-8")
+            args = type(
+                "Args",
+                (),
+                {
+                    "run_dir": run_dir,
+                    "dtr_path": None,
+                    "results_path": None,
+                    "samples_path": None,
+                    "prefix_len": None,
+                    "num_bins": 7,
+                    "start_token": 50,
+                    "end_token": None,
+                    "output_plot": None,
+                    "output_json": None,
+                },
+            )()
+
+            _dtr_path, _results_path, _samples_path, output_plot, output_json = (
+                resolve_paths(args)
+            )
+
+            self.assertEqual(
+                output_plot,
+                default_output_dir(run_dir)
+                / plot_filename(7, start_token=50),
+            )
+            self.assertEqual(
+                output_json,
+                default_output_dir(run_dir)
+                / summary_filename(7, start_token=50),
+            )
+
     def test_load_prefix_dtr_by_key_reads_initial_tokens(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = Path(tmpdir)
@@ -305,6 +347,38 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
                     samples_path,
                     reasoning_tags=None,
                 )
+
+    def test_load_window_dtr_records_by_key_reads_suffix_tokens(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            matrix_dir = jsd_output_dir(run_dir)
+            matrix_dir.mkdir(parents=True)
+            torch.save(
+                {
+                    "doc_id": 0,
+                    "repeat_index": 0,
+                    "num_tokens": 4,
+                    "jsd_matrix": torch.tensor(
+                        [
+                            [0.9, 0.9, 0.4],
+                            [0.8, 0.8, 0.4],
+                            [0.1, 0.1, 0.1],
+                            [0.1, 0.1, 0.1],
+                        ],
+                        dtype=torch.float32,
+                    ),
+                },
+                matrix_dir / "doc0_rep0.pt",
+            )
+
+            window_dtr_by_key = load_window_dtr_records_by_key(
+                run_dir,
+                start_token=2,
+                end_token=None,
+            )
+
+            self.assertAlmostEqual(window_dtr_by_key[(0, 0)].dtr, 0.0)
+            self.assertEqual(window_dtr_by_key[(0, 0)].num_tokens, 4)
 
     def _write_samples(self, samples_path: Path) -> Path:
         rows = [
