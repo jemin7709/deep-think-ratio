@@ -42,6 +42,7 @@ class AggregatedPoint:
     repeat_index: int
     dtr: float
     response_length: int
+    is_correct: bool | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -74,6 +75,11 @@ def load_source_summary(summary_path: Path) -> SourceSummary:
             repeat_index=int(entry["repeat_index"]),
             dtr=float(entry["dtr"]),
             response_length=int(entry["response_length"]),
+            is_correct=(
+                None
+                if entry.get("is_correct") is None
+                else bool(entry["is_correct"])
+            ),
         )
         for entry in payload["points"]
     ]
@@ -109,6 +115,7 @@ def aggregate_points(summaries: list[SourceSummary]) -> list[AggregatedPoint]:
                     repeat_index=point.repeat_index,
                     dtr=point.dtr,
                     response_length=point.response_length,
+                    is_correct=point.is_correct,
                 )
             )
     points.sort(key=lambda point: (point.dtr, point.run_dir, point.doc_id, point.repeat_index))

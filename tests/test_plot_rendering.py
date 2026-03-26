@@ -4,8 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+from PIL import Image
 
-from src.plot.dtr_length_scatter import _expand_axis_range
+from src.plot.dtr_length_scatter import CORRECT_POINT_FILL, POINT_FILL, _expand_axis_range
 from src.plot.dtr_length_scatter import plot_to_png as plot_dtr_length_scatter_to_png
 from src.plot.dtr_pass1_correlation import plot_to_png
 from src.plot.jsd_heatmap import render_heatmap
@@ -22,6 +23,7 @@ class CorrelationBin:
 class ScatterPoint:
     dtr: float
     response_length: int
+    is_correct: bool
 
 
 class PlotRenderingTest(unittest.TestCase):
@@ -53,9 +55,8 @@ class PlotRenderingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "scatter.png"
             points = [
-                ScatterPoint(dtr=0.2, response_length=12),
-                ScatterPoint(dtr=0.5, response_length=18),
-                ScatterPoint(dtr=0.8, response_length=30),
+                ScatterPoint(dtr=0.2, response_length=10, is_correct=True),
+                ScatterPoint(dtr=0.8, response_length=180, is_correct=False),
             ]
 
             plot_dtr_length_scatter_to_png(
@@ -67,6 +68,29 @@ class PlotRenderingTest(unittest.TestCase):
 
             self.assertTrue(output_path.is_file())
             self.assertGreater(output_path.stat().st_size, 0)
+
+    def test_plot_to_png_colors_correct_vs_incorrect_points(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "scatter.png"
+            points = [
+                ScatterPoint(dtr=0.2, response_length=10, is_correct=True),
+                ScatterPoint(dtr=0.8, response_length=180, is_correct=False),
+            ]
+            plot_dtr_length_scatter_to_png(
+                points=points,
+                pearson=0.98,
+                output_path=output_path,
+                title="DTR vs Response Length",
+            )
+
+            image = Image.open(output_path).convert("RGB")
+            pixels = {
+                image.getpixel((x, y))
+                for x in range(image.width)
+                for y in range(image.height)
+            }
+            self.assertIn(CORRECT_POINT_FILL, pixels)
+            self.assertIn(POINT_FILL, pixels)
 
     def test_render_heatmap_writes_png(self):
         with tempfile.TemporaryDirectory() as tmpdir:

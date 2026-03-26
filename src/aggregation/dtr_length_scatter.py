@@ -17,6 +17,8 @@ from src.dtr.jsd_utils import (
     load_aggregated_results,
 )
 from src.plot.dtr_length_scatter import plot_to_png
+from tasks.aime24.metrics import TASK_NAME
+from tasks.aime24.utils import resolve_reasoning_tags, score_match
 
 
 DEFAULT_OUTPUT_DIR_NAME = "dtr_length_scatter"
@@ -32,6 +34,7 @@ class SequenceLengthPoint:
     repeat_index: int
     dtr: float
     response_length: int
+    is_correct: bool | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--dtr-path", type=Path)
     parser.add_argument("--results-path", type=Path)
+    parser.add_argument("--samples-path", type=Path)
     parser.add_argument("--output-plot", type=Path)
     parser.add_argument("--output-json", type=Path)
     parser.add_argument("--title")
@@ -90,6 +94,42 @@ def resolve_paths(
     return dtr_path, results_path, output_plot, output_json
 
 
+def _results_suffix(results_path: Path) -> str | None:
+    stem = results_path.stem
+    if not stem.startswith("results_"):
+        return None
+    return stem[len("results_") :]
+
+
+def resolve_samples_path(
+    *,
+    run_dir: Path,
+    task_name: str,
+    results_path: Path,
+    samples_path: Path | None,
+) -> Path:
+    if samples_path is not None:
+        return samples_path.resolve()
+
+    # Prefer the sample snapshot that shares the same results suffix so we
+    # never silently recolor points from a different run snapshot.
+    suffix = _results_suffix(results_path)
+    if suffix is not None:
+        matched = run_dir / f"samples_{task_name}_{suffix}.jsonl"
+        if matched.is_file():
+            return matched
+
+    candidates = sorted(run_dir.glob(f"samples_{task_name}_*.jsonl"))
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise FileNotFoundError(f"no samples_{task_name}_*.jsonl found under {run_dir}")
+    raise FileNotFoundError(
+        "multiple sample files found without an exact match for "
+        f"{results_path.name}; pass --samples-path explicitly"
+    )
+
+
 def resolve_model_name(aggregated: dict[str, Any], run_dir: Path) -> str:
     """results payload 안에서 사람이 읽을 모델 식별자를 고른다."""
     config = aggregated.get("config", {})
@@ -125,11 +165,61 @@ def load_points(path: Path) -> list[SequenceLengthPoint]:
                 repeat_index=int(row["repeat_index"]),
                 dtr=float(row["dtr"]),
                 response_length=int(row["num_tokens"]),
+                is_correct=(
+                    None
+                    if row.get("is_correct") is None
+                    else bool(row["is_correct"])
+                ),
             )
         )
 
     points.sort(key=lambda point: (point.dtr, point.doc_id, point.repeat_index))
     return points
+
+
+def load_correctness_by_key(
+    samples_path: Path,
+    *,
+    reasoning_tags: list[tuple[str, str]] | None,
+) -> dict[tuple[int, int], bool]:
+    correctness_by_key: dict[tuple[int, int], bool] = {}
+
+    with samples_path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            sample = json.loads(line)
+            doc_id = int(sample["doc_id"])
+            target = str(sample["target"])
+            responses = [str(response) for response in sample["resps"][0]]
+
+            for repeat_index, response in enumerate(responses):
+                correctness_by_key[(doc_id, repeat_index)] = (
+                    score_match(
+                        target,
+                        response,
+                        reasoning_tags=reasoning_tags,
+                    )
+                    == 1.0
+                )
+
+    return correctness_by_key
+
+
+def attach_correctness(
+    points: list[SequenceLengthPoint],
+    correctness_by_key: dict[tuple[int, int], bool],
+) -> list[SequenceLengthPoint]:
+    return [
+        SequenceLengthPoint(
+            doc_id=point.doc_id,
+            repeat_index=point.repeat_index,
+            dtr=point.dtr,
+            response_length=point.response_length,
+            is_correct=correctness_by_key[(point.doc_id, point.repeat_index)],
+        )
+        for point in points
+    ]
 
 
 def pearson_r(xs: list[float], ys: list[float]) -> float:
@@ -163,6 +253,7 @@ def write_summary_json(
     model_name: str,
     dtr_path: Path,
     results_path: Path,
+    samples_path: Path | None,
     output_path: Path,
     points: list[SequenceLengthPoint],
     pearson: float,
@@ -175,6 +266,7 @@ def write_summary_json(
         "model": model_name,
         "dtr_path": str(dtr_path),
         "results_path": str(results_path),
+        "samples_path": None if samples_path is None else str(samples_path),
         "num_sequences": len(points),
         "pearson_r": pearson,
         "dtr_min": min(dtrs),
@@ -217,6 +309,21 @@ def main() -> None:
     )
     task_name = infer_task_name(aggregated)
     model_name = resolve_model_name(aggregated, run_dir)
+    samples_path = None
+    if task_name == TASK_NAME:
+        samples_path = resolve_samples_path(
+            run_dir=run_dir,
+            task_name=task_name,
+            results_path=results_path,
+            samples_path=getattr(args, "samples_path", None),
+        )
+        points = attach_correctness(
+            points,
+            load_correctness_by_key(
+                samples_path,
+                reasoning_tags=resolve_reasoning_tags(aggregated),
+            ),
+        )
     pearson = pearson_r(
         [point.dtr for point in points],
         [float(point.response_length) for point in points],
@@ -235,6 +342,7 @@ def main() -> None:
         model_name=model_name,
         dtr_path=dtr_path,
         results_path=results_path,
+        samples_path=samples_path,
         output_path=output_json,
         points=points,
         pearson=pearson,

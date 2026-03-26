@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import cast
+from typing import TypeAlias, cast
 
 from lighteval.metrics.dynamic_metrics import MultilingualExtractiveMatchMetric
 from lighteval.metrics.metrics_sample import AvgAtN, PassAtK
@@ -17,6 +17,7 @@ from lighteval.models.model_output import ModelResponse
 from lighteval.tasks.requests import Doc
 from lighteval.utils.language import Language
 from lighteval.utils.utils import remove_reasoning_tags
+from sympy import Basic, MatrixBase
 
 
 MATH_EXTRACTION_PRECISION = 6
@@ -24,6 +25,8 @@ MATH_TIMEOUT_SECONDS = 5
 TASK_GOLD = (ExprExtractionConfig(), LatexExtractionConfig())
 TASK_PRED = (ExprExtractionConfig(), LatexExtractionConfig())
 ReasoningTags = list[tuple[str, str]]
+MathVoteTarget: TypeAlias = Basic | MatrixBase | str
+MathVoteTargetList: TypeAlias = list[MathVoteTarget]
 RUNTIME_REASONING_TAGS: ReasoningTags | None = None
 ASSISTANT_START_PREFIX = "<|start|>assistant"
 
@@ -140,7 +143,7 @@ def extract_first_canonical_math_answer(text: str) -> str:
     return str(extracted[0]) if extracted else text
 
 
-def extract_math_vote_targets(text: str) -> list[object]:
+def extract_math_vote_targets(text: str) -> MathVoteTargetList:
     extracted = extract_target_from_pred(
         text,
         get_generic_math_pred_extraction_regexes(),
@@ -148,10 +151,10 @@ def extract_math_vote_targets(text: str) -> list[object]:
         extraction_mode="any_match",
         timeout_seconds=MATH_TIMEOUT_SECONDS,
     )
-    return extracted if extracted else [text]
+    return cast(MathVoteTargetList, extracted) if extracted else [text]
 
 
-def math_vote_targets_match(left: list[object], right: list[object]) -> bool:
+def math_vote_targets_match(left: MathVoteTargetList, right: MathVoteTargetList) -> bool:
     return compare_gold_target(
         left,
         right,
@@ -161,7 +164,7 @@ def math_vote_targets_match(left: list[object], right: list[object]) -> bool:
 
 
 def pick_majority_math_completion(completions: list[str]) -> str:
-    majority_groups: list[tuple[list[object], list[str]]] = []
+    majority_groups: list[tuple[MathVoteTargetList, list[str]]] = []
     for completion in completions:
         extracted = extract_math_vote_targets(completion)
         for representative, grouped_completions in majority_groups:

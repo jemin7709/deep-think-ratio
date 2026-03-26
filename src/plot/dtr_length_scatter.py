@@ -26,6 +26,8 @@ BACKGROUND = (255, 255, 255)
 AXIS = (54, 61, 70)
 GRID = (214, 219, 223)
 FIT_LINE = (47, 111, 132)
+CORRECT_POINT_FILL = (67, 122, 201)
+CORRECT_POINT_OUTLINE = (32, 72, 142)
 POINT_FILL = (227, 108, 72)
 POINT_OUTLINE = (123, 52, 28)
 TEXT = (39, 44, 52)
@@ -130,21 +132,6 @@ def plot_to_png(
     draw.line([(plot_left, plot_top), (plot_left, plot_bottom)], fill=AXIS, width=3)
     draw.line([(plot_left, plot_bottom), (plot_right, plot_bottom)], fill=AXIS, width=3)
 
-    # Scatter plot은 sequence-level 점의 분포를 직접 보여주는 게 목적이다.
-    point_radius = 6
-    for x_value, y_value in zip(xs, ys, strict=True):
-        x = x_to_pixel(x_value)
-        y = y_to_pixel(y_value)
-        draw.ellipse(
-            [
-                (x - point_radius, y - point_radius),
-                (x + point_radius, y + point_radius),
-            ],
-            fill=POINT_FILL,
-            outline=POINT_OUTLINE,
-            width=2,
-        )
-
     slope, intercept = fit_line(xs, ys)
     fit_start = (x_low, intercept + slope * x_low)
     fit_end = (x_high, intercept + slope * x_high)
@@ -156,6 +143,22 @@ def plot_to_png(
         fill=FIT_LINE,
         width=4,
     )
+
+    # 회귀선은 분포 경향만 보조적으로 보여주고, 점의 정오 색상은 직접 읽혀야 한다.
+    point_radius = 6
+    for point in points:
+        x = x_to_pixel(point.dtr)
+        y = y_to_pixel(float(point.response_length))
+        is_correct = getattr(point, "is_correct", None) is True
+        draw.ellipse(
+            [
+                (x - point_radius, y - point_radius),
+                (x + point_radius, y + point_radius),
+            ],
+            fill=CORRECT_POINT_FILL if is_correct else POINT_FILL,
+            outline=CORRECT_POINT_OUTLINE if is_correct else POINT_OUTLINE,
+            width=2,
+        )
 
     title_w, _ = measure_text(title, title_font)
     draw.text(((width - title_w) / 2, 34), title, fill=TEXT, font=title_font)

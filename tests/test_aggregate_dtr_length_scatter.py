@@ -37,8 +37,20 @@ def write_summary(
         "length_mean": 15.0,
         "points": points
         or [
-            {"doc_id": 0, "repeat_index": 0, "dtr": 0.1, "response_length": 10},
-            {"doc_id": 0, "repeat_index": 1, "dtr": 0.3, "response_length": 20},
+            {
+                "doc_id": 0,
+                "repeat_index": 0,
+                "dtr": 0.1,
+                "response_length": 10,
+                "is_correct": True,
+            },
+            {
+                "doc_id": 0,
+                "repeat_index": 1,
+                "dtr": 0.3,
+                "response_length": 20,
+                "is_correct": False,
+            },
         ],
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -80,8 +92,20 @@ class AggregateDtrLengthScatterTest(unittest.TestCase):
                 path_b,
                 run_dir="/tmp/run-b",
                 points=[
-                    {"doc_id": 1, "repeat_index": 0, "dtr": 0.2, "response_length": 12},
-                    {"doc_id": 1, "repeat_index": 1, "dtr": 0.4, "response_length": 24},
+                    {
+                        "doc_id": 1,
+                        "repeat_index": 0,
+                        "dtr": 0.2,
+                        "response_length": 12,
+                        "is_correct": True,
+                    },
+                    {
+                        "doc_id": 1,
+                        "repeat_index": 1,
+                        "dtr": 0.4,
+                        "response_length": 24,
+                        "is_correct": False,
+                    },
                 ],
             )
 
@@ -91,6 +115,10 @@ class AggregateDtrLengthScatterTest(unittest.TestCase):
             self.assertEqual(len(points), 4)
             self.assertEqual(points[0].dtr, 0.1)
             self.assertEqual(points[-1].run_dir, "/tmp/run-b")
+            self.assertEqual(
+                [getattr(point, "is_correct") for point in points],
+                [True, True, False, False],
+            )
 
     def test_load_source_summaries_rejects_mixed_models(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -129,6 +157,10 @@ class AggregateDtrLengthScatterTest(unittest.TestCase):
             self.assertEqual(output_path.name, OUTPUT_JSON_FILENAME_AGGREGATED)
             self.assertEqual(
                 payload["plot_path"], str(aggregate_dir / OUTPUT_PLOT_FILENAME)
+            )
+            self.assertIn("is_correct", payload["points"][0])
+            self.assertEqual(
+                [point["is_correct"] for point in payload["points"]], [True, False]
             )
 
     def test_build_title_mentions_runs_and_points(self):
