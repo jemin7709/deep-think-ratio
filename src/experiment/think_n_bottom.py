@@ -258,6 +258,14 @@ def summarize_doc_results(
 
     total_full_tokens = sum(result.cost["full_tokens"] for result in doc_results)
     total_bottom_tokens = sum(result.cost["bottom_tokens"] for result in doc_results)
+    total_repeat_tokens = sum(
+        record.full_num_tokens
+        for result in doc_results
+        for record in result.ranked_repeats
+    )
+    total_repeat_count = sum(
+        len(result.ranked_repeats) for result in doc_results
+    )
     total_selected_tokens = sum(
         record.full_num_tokens
         for result in doc_results
@@ -279,6 +287,7 @@ def summarize_doc_results(
             "total_bottom_tokens": total_bottom_tokens,
             "mean_full_tokens_per_doc": total_full_tokens / len(doc_results),
             "mean_bottom_tokens_per_doc": total_bottom_tokens / len(doc_results),
+            "mean_full_tokens_per_repeat": total_repeat_tokens / total_repeat_count,
             "mean_selected_tokens_per_selected_repeat": (
                 total_selected_tokens / selected_repeat_count
             ),
@@ -326,6 +335,8 @@ def render_summary(
             f"total_bottom_tokens: {summary['cost']['total_bottom_tokens']}",
             f"mean_full_tokens_per_doc: {summary['cost']['mean_full_tokens_per_doc']:.6f}",
             f"mean_bottom_tokens_per_doc: {summary['cost']['mean_bottom_tokens_per_doc']:.6f}",
+            "mean_full_tokens_per_repeat: "
+            f"{summary['cost']['mean_full_tokens_per_repeat']:.6f}",
             "mean_selected_tokens_per_selected_repeat: "
             f"{summary['cost']['mean_selected_tokens_per_selected_repeat']:.6f}",
             f"saved_tokens: {summary['cost']['saved_tokens']}",
@@ -336,6 +347,8 @@ def render_summary(
             "cost_formula_mean_full_tokens_per_doc: "
             f"{base_cost_definition['mean_full_tokens_per_doc']}",
             "cost_formula_mean_bottom_tokens_per_doc: total_bottom_tokens / num_docs",
+            "cost_formula_mean_full_tokens_per_repeat: "
+            f"{base_cost_definition['mean_full_tokens_per_repeat']}",
             "cost_formula_mean_selected_tokens_per_selected_repeat: "
             f"{base_cost_definition['mean_selected_tokens_per_selected_repeat']}",
         ]

@@ -195,6 +195,10 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             self.assertGreater(payload["docs"][0]["metrics"]["full_word_rep_2"], 0.0)
             self.assertIn("bottom_maj@2: 0.000000", rendered)
             self.assertIn(
+                "mean_full_tokens_per_repeat: 5.000000",
+                rendered,
+            )
+            self.assertIn(
                 "mean_selected_tokens_per_selected_repeat: 5.000000",
                 rendered,
             )

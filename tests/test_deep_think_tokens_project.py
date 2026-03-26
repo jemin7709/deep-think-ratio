@@ -320,6 +320,10 @@ class ThinkNExperimentTest(unittest.TestCase):
                 top_payload["docs"][0]["selection_stats"]["selected_majority_correct"]
             )
             self.assertEqual(
+                top_payload["summary"]["cost"]["mean_full_tokens_per_repeat"],
+                4.0,
+            )
+            self.assertEqual(
                 top_payload["summary"]["cost"]["mean_selected_tokens_per_selected_repeat"],
                 4.0,
             )
@@ -342,6 +346,10 @@ class ThinkNExperimentTest(unittest.TestCase):
             )
             self.assertFalse(
                 bottom_payload["docs"][0]["selection_stats"]["selected_majority_correct"]
+            )
+            self.assertEqual(
+                bottom_payload["summary"]["cost"]["mean_full_tokens_per_repeat"],
+                4.0,
             )
             self.assertEqual(
                 bottom_payload["summary"]["cost"][

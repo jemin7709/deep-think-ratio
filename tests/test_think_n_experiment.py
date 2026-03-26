@@ -196,8 +196,12 @@ class ThinkNExperimentTest(unittest.TestCase):
             mean_selected_tokens = payload["summary"]["cost"][
                 "mean_selected_tokens_per_selected_repeat"
             ]
+            mean_full_tokens_per_repeat = payload["summary"]["cost"][
+                "mean_full_tokens_per_repeat"
+            ]
             self.assertEqual(mean_full_tokens_per_doc, 24.0)
             self.assertEqual(mean_think_tokens_per_doc, 12.0)
+            self.assertEqual(mean_full_tokens_per_repeat, 4.0)
             self.assertEqual(mean_selected_tokens, 4.0)
             match = re.search(
                 r"^mean_full_tokens_per_doc:\s*([0-9]+(?:\.[0-9]+)?)$",
@@ -213,6 +217,13 @@ class ThinkNExperimentTest(unittest.TestCase):
             )
             self.assertIsNotNone(match)
             self.assertAlmostEqual(float(match.group(1)), mean_think_tokens_per_doc)
+            match = re.search(
+                r"^mean_full_tokens_per_repeat:\s*([0-9]+(?:\.[0-9]+)?)$",
+                rendered,
+                re.MULTILINE,
+            )
+            self.assertIsNotNone(match)
+            self.assertAlmostEqual(float(match.group(1)), mean_full_tokens_per_repeat)
             match = re.search(
                 r"^mean_selected_tokens_per_selected_repeat:\s*([0-9]+(?:\.[0-9]+)?)$",
                 rendered,
@@ -279,6 +290,7 @@ class ThinkNExperimentTest(unittest.TestCase):
             cost = payload["summary"]["cost"]
             self.assertEqual(cost["total_full_tokens"], 33)
             self.assertEqual(cost["total_think_tokens"], 15)
+            self.assertEqual(cost["mean_full_tokens_per_repeat"], 4.5)
             self.assertEqual(cost["mean_selected_tokens_per_selected_repeat"], 4.0)
             self.assertEqual(cost["saved_tokens"], 18)
 
