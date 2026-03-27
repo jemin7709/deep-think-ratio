@@ -4,7 +4,7 @@
 - Search related files for context before starting a task.
 - Avoid defensive programming (if you don't know what it is, search it).
 - Do literate programming.
-- Make full use of subagents. (Recommended: gpt-5.3-codex-spark, or gpt-5.4 with high or xhigh reasoning effort.)
+- Make full use of subagents. (Recommended: gpt-5.3-codex-spark, or gpt-5.4 with medium or high reasoning effort.)
 
 # Python Specific Instructions
 
