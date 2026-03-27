@@ -24,6 +24,8 @@ def write_experiment_summary(
     mean_avg: float = 0.75,
     total_full_tokens: float = 1000.0,
     total_think_tokens: float = 550.0,
+    mean_full_tokens_per_repeat: float = 20.0,
+    mean_selected_tokens_per_selected_repeat: float = 22.0,
     saved_tokens: float = 450.0,
     saved_pct: float = 0.45,
     delta_vs_cons: float = -0.1,
@@ -51,6 +53,10 @@ def write_experiment_summary(
                 "total_think_tokens": total_think_tokens,
                 "mean_full_tokens_per_doc": total_full_tokens / 30,
                 "mean_think_tokens_per_doc": total_think_tokens / 30,
+                "mean_full_tokens_per_repeat": mean_full_tokens_per_repeat,
+                "mean_selected_tokens_per_selected_repeat": (
+                    mean_selected_tokens_per_selected_repeat
+                ),
                 "saved_tokens": saved_tokens,
                 "saved_pct": saved_pct,
             },
@@ -141,6 +147,8 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 mean_avg=0.7,
                 total_full_tokens=900.0,
                 total_think_tokens=450.0,
+                mean_full_tokens_per_repeat=19.0,
+                mean_selected_tokens_per_selected_repeat=18.0,
                 saved_tokens=450.0,
                 saved_pct=0.5,
                 delta_vs_cons=-0.1,
@@ -155,6 +163,8 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 mean_avg=0.5,
                 total_full_tokens=1200.0,
                 total_think_tokens=720.0,
+                mean_full_tokens_per_repeat=23.0,
+                mean_selected_tokens_per_selected_repeat=24.0,
                 saved_tokens=480.0,
                 saved_pct=0.4,
                 delta_vs_cons=-0.2,
@@ -178,6 +188,14 @@ class AverageExperimentSummaryTest(unittest.TestCase):
             self.assertAlmostEqual(output["metrics_mean"]["think_maj@24"], 0.7)
             self.assertAlmostEqual(output["metrics_mean"]["cons_maj@48"], 0.85)
             self.assertAlmostEqual(output["cost_mean"]["saved_pct"], 0.45)
+            self.assertAlmostEqual(
+                output["cost_mean"]["mean_full_tokens_per_repeat"],
+                21.0,
+            )
+            self.assertAlmostEqual(
+                output["cost_mean"]["mean_selected_tokens_per_selected_repeat"],
+                21.0,
+            )
             self.assertAlmostEqual(output["delta_mean"]["vs_cons_maj"], -0.15)
             self.assertAlmostEqual(
                 output["metrics_stddev"]["think_maj@24"],
@@ -186,6 +204,14 @@ class AverageExperimentSummaryTest(unittest.TestCase):
             self.assertAlmostEqual(
                 output["cost_stddev"]["total_full_tokens"],
                 212.13203435596427,
+            )
+            self.assertAlmostEqual(
+                output["cost_stddev"]["mean_full_tokens_per_repeat"],
+                2.8284271247461903,
+            )
+            self.assertAlmostEqual(
+                output["cost_stddev"]["mean_selected_tokens_per_selected_repeat"],
+                4.242640687119285,
             )
             self.assertAlmostEqual(output["delta_stddev"]["vs_mean_avg"], 0.0)
             self.assertNotIn("num_docs", output["metrics_stddev"])
@@ -304,9 +330,11 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                         },
                         "cost": {
                             "total_full_tokens": 1000.0,
-                            "total_think_tokens": 500.0,
+                            "total_bottom_tokens": 500.0,
                             "mean_full_tokens_per_doc": 33.333,
-                            "mean_think_tokens_per_doc": 16.666,
+                            "mean_bottom_tokens_per_doc": 16.666,
+                            "mean_full_tokens_per_repeat": 10.0,
+                            "mean_selected_tokens_per_selected_repeat": 12.0,
                             "saved_tokens": 500.0,
                             "saved_pct": 0.5,
                         },
@@ -375,6 +403,14 @@ class AverageExperimentSummaryTest(unittest.TestCase):
             self.assertAlmostEqual(output["metrics_mean"]["full_token_rep_4"], 0.3)
             self.assertAlmostEqual(output["metrics_mean"]["selected_token_rep_2"], 0.45)
             self.assertAlmostEqual(output["metrics_mean"]["selected_word_rep_4"], 0.4)
+            self.assertAlmostEqual(
+                output["cost_mean"]["mean_full_tokens_per_repeat"],
+                10.0,
+            )
+            self.assertAlmostEqual(
+                output["cost_mean"]["mean_selected_tokens_per_selected_repeat"],
+                12.0,
+            )
             self.assertAlmostEqual(
                 output["metrics_stddev"]["full_token_rep_2"],
                 0.21213203435596426,

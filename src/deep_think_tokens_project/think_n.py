@@ -1,4 +1,4 @@
-"""이미 생성된 run 산출물로 Think@n prefix-DTR 실험을 재현한다."""
+"""`deep-think-tokens` prefix DTR로 Think@n 실험을 재현한다."""
 
 from __future__ import annotations
 
@@ -11,15 +11,14 @@ from statistics import fmean
 
 import torch
 
-from src.dtr.jsd_utils import DEFAULT_G
-from src.dtr.jsd_utils import DEFAULT_HIDDEN_STATE_MODE
-from src.dtr.jsd_utils import DEFAULT_RHO
-from src.dtr.jsd_utils import DEFAULT_TOKEN_BLOCK_SIZE
-from src.dtr.jsd_utils import compute_dtr_from_jsd_matrix
-from src.dtr.jsd_utils import jsd_output_dir
-from src.dtr.jsd_utils import latest_matching_file
-from src.dtr.jsd_utils import load_aggregated_results
-from src.dtr.jsd_utils import validate_prefix_len
+from src.deep_think_tokens_project.io import load_aggregated_results
+from src.deep_think_tokens_project.io import load_sample_rows
+from src.deep_think_tokens_project.io import jsd_output_dir
+from src.deep_think_tokens_project.utils import DEFAULT_G
+from src.deep_think_tokens_project.utils import DEFAULT_P
+from src.deep_think_tokens_project.utils import compute_dtr_from_divergence_matrix
+from src.deep_think_tokens_project.utils import validate_prefix_len
+from src.experiment.repetition_metrics import mean_seq_rep_n
 
 
 REP_N_VALUES = (2, 4)
@@ -28,8 +27,6 @@ REP_LEVELS = ("token", "word")
 
 @dataclass(frozen=True)
 class RepeatRecord:
-    """한 completion의 prefix DTR, 길이, 랭킹 정보를 담는다."""
-
     repeat_index: int
     prefix_dtr: float
     full_num_tokens: int
@@ -39,8 +36,6 @@ class RepeatRecord:
 
 @dataclass(frozen=True)
 class DocResult:
-    """문제 하나에 대한 Think@n 선택 결과와 비용/성능을 담는다."""
-
     doc_id: int
     target: str
     selected_repeat_indices: list[int]
@@ -52,8 +47,6 @@ class DocResult:
 
 @dataclass(frozen=True)
 class SelectionStats:
-    """선택된 repeat subset의 길이와 정답 여부를 요약한다."""
-
     selected_mean_num_tokens: float
     selected_majority_correct: bool
 
@@ -65,13 +58,9 @@ def build_repetition_metrics(
     model_name: str,
     reasoning_tags: list[tuple[str, str]] | None,
 ) -> dict[str, float]:
-    from src.experiment.repetition_metrics import mean_seq_rep_n
-
     metrics: dict[str, float] = {}
     for n in REP_N_VALUES:
         for level in REP_LEVELS:
-            # Repetition is intended to reflect the raw sampled response text,
-            # unlike accuracy metrics that compare the cleaned final answer.
             metrics[f"selected_{level}_rep_{n}"] = mean_seq_rep_n(
                 selected_completions,
                 n=n,
@@ -126,7 +115,6 @@ def resolve_selected_count(
     top_fraction: float,
     selected_count: int | None,
 ) -> int:
-    """명시값이 있으면 그대로 쓰고, 없으면 비율에서 고른다."""
     if selected_count is not None:
         if selected_count < 1 or selected_count > repeats:
             raise ValueError(
@@ -146,11 +134,11 @@ def experiment_slug(
     repeats: int,
     selected_count: int,
     g: float,
-    rho: float,
+    p: float,
 ) -> str:
     return (
         f"prefix{prefix_len}_top{selected_count}of{repeats}"
-        f"_g{format(g, 'g')}_rho{format(rho, 'g')}"
+        f"_g{format(g, 'g')}_p{format(p, 'g')}"
     )
 
 
@@ -161,7 +149,7 @@ def build_output_dir(
     repeats: int,
     selected_count: int,
     g: float,
-    rho: float,
+    p: float,
 ) -> Path:
     return (
         run_dir.resolve()
@@ -171,31 +159,22 @@ def build_output_dir(
             repeats=repeats,
             selected_count=selected_count,
             g=g,
-            rho=rho,
+            p=p,
         )
     )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Replay a run with prefix DTR ranking and Think@n-style subset voting."
+        description="Replay a run with prefix deep-think-tokens DTR ranking."
     )
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--prefix-len", type=int, default=50)
     parser.add_argument("--top-fraction", type=float, default=0.5)
     parser.add_argument("--selected-count", type=int)
     parser.add_argument("--g", type=float, default=DEFAULT_G)
-    parser.add_argument("--rho", type=float, default=DEFAULT_RHO)
+    parser.add_argument("--p", type=float, default=DEFAULT_P)
     return parser.parse_args()
-
-
-def load_sample_rows(run_dir: Path, task_name: str) -> list[dict]:
-    samples_path = latest_matching_file(run_dir, f"samples_{task_name}_*.jsonl")
-    return [
-        json.loads(line)
-        for line in samples_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
 
 
 def load_prefix_dtr_rows(
@@ -203,30 +182,22 @@ def load_prefix_dtr_rows(
     run_dir: Path,
     prefix_len: int,
     g: float,
-    rho: float,
+    p: float,
 ) -> dict[tuple[int, int], tuple[float, int]]:
     validate_prefix_len(prefix_len)
-    matrix_dir = jsd_output_dir(
-        run_dir,
-        hidden_state_mode=DEFAULT_HIDDEN_STATE_MODE,
-        token_block_size=DEFAULT_TOKEN_BLOCK_SIZE,
-    )
+    matrix_dir = jsd_output_dir(run_dir)
     matrix_paths = sorted(matrix_dir.glob("doc*_rep*.pt"))
     if not matrix_paths:
-        raise FileNotFoundError(f"no JSD matrices found under {matrix_dir}")
+        raise FileNotFoundError(f"no divergence caches found under {matrix_dir}")
 
     prefix_dtr_by_key: dict[tuple[int, int], tuple[float, int]] = {}
     for matrix_path in matrix_paths:
         payload = torch.load(matrix_path, map_location="cpu", weights_only=False)
-        jsd_matrix = payload["jsd_matrix"]
-        if jsd_matrix.shape[0] == 0:
-            raise ValueError(f"empty JSD matrix: {matrix_path}")
-
-        prefix_jsd = jsd_matrix[: min(prefix_len, jsd_matrix.shape[0])]
-        dtr_result = compute_dtr_from_jsd_matrix(prefix_jsd, g=g, rho=rho)
+        divergence_matrix = torch.as_tensor(payload["divergence_matrix"])
+        prefix_matrix = divergence_matrix[:, : min(prefix_len, divergence_matrix.shape[1])]
+        dtr_result = compute_dtr_from_divergence_matrix(prefix_matrix, g=g, p=p)
         key = (int(payload["doc_id"]), int(payload["repeat_index"]))
         prefix_dtr_by_key[key] = (float(dtr_result.dtr), int(payload["num_tokens"]))
-
     return prefix_dtr_by_key
 
 
@@ -251,21 +222,18 @@ def build_ranked_repeats(
     selected_repeat_indices = {
         repeat_index for repeat_index, _, _ in ranking_basis[:selected_count]
     }
-
-    ranked_repeats: list[RepeatRecord] = []
-    for rank, (repeat_index, prefix_dtr, full_num_tokens) in enumerate(
-        ranking_basis, start=1
-    ):
-        ranked_repeats.append(
-            RepeatRecord(
-                repeat_index=repeat_index,
-                prefix_dtr=prefix_dtr,
-                full_num_tokens=full_num_tokens,
-                rank=rank,
-                selected=repeat_index in selected_repeat_indices,
-            )
+    return [
+        RepeatRecord(
+            repeat_index=repeat_index,
+            prefix_dtr=prefix_dtr,
+            full_num_tokens=full_num_tokens,
+            rank=rank,
+            selected=repeat_index in selected_repeat_indices,
         )
-    return ranked_repeats
+        for rank, (repeat_index, prefix_dtr, full_num_tokens) in enumerate(
+            ranking_basis, start=1
+        )
+    ]
 
 
 def build_doc_result(
@@ -283,7 +251,6 @@ def build_doc_result(
     target = str(row["target"])
     completions = [str(response) for response in row["resps"][0]]
     repeats = len(completions)
-
     ranked_repeats = build_ranked_repeats(
         doc_id=doc_id,
         completions=completions,
@@ -403,7 +370,6 @@ def summarize_doc_results(
         if record.selected
     )
     saved_tokens = total_full_tokens - total_think_tokens
-
     return {
         "metrics": metrics,
         "cost": {
@@ -432,8 +398,9 @@ def render_summary(
     task_name: str,
     model_name: str,
     prefix_len: int,
-    repeats: int,
     selected_count: int,
+    repeats: int,
+    p: float,
     summary: dict,
 ) -> str:
     cost_definition = build_cost_definition()
@@ -447,6 +414,7 @@ def render_summary(
         f"model: {model_name}",
         f"prefix_len: {prefix_len}",
         f"selected_count: {selected_count}",
+        f"p: {p}",
         f"{think_key}: {summary['metrics'][think_key]:.6f}",
         f"{cons_key}: {summary['metrics'][cons_key]:.6f}",
         f"{mean_key}: {summary['metrics'][mean_key]:.6f}",
@@ -488,7 +456,7 @@ def run_experiment(
     top_fraction: float = 0.5,
     selected_count: int | None = None,
     g: float = DEFAULT_G,
-    rho: float = DEFAULT_RHO,
+    p: float = DEFAULT_P,
 ) -> tuple[Path, Path]:
     from tasks.aime24.metrics import infer_repeats, infer_task_name
     from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags
@@ -509,9 +477,8 @@ def run_experiment(
         run_dir=resolved_run_dir,
         prefix_len=prefix_len,
         g=g,
-        rho=rho,
+        p=p,
     )
-
     doc_results = [
         build_doc_result(
             row=row,
@@ -537,7 +504,7 @@ def run_experiment(
         repeats=repeats,
         selected_count=chosen_count,
         g=g,
-        rho=rho,
+        p=p,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -550,7 +517,8 @@ def run_experiment(
         "selected_count": chosen_count,
         "prefix_len": prefix_len,
         "g": g,
-        "rho": rho,
+        "p": p,
+        "rho": p,
         "cost_definition": build_cost_definition(),
         "summary": summary,
         "docs": [
@@ -579,8 +547,9 @@ def run_experiment(
             task_name=task_name,
             model_name=model_name,
             prefix_len=prefix_len,
-            repeats=repeats,
             selected_count=chosen_count,
+            repeats=repeats,
+            p=p,
             summary=summary,
         )
         + "\n",
@@ -597,7 +566,7 @@ def main() -> None:
         top_fraction=args.top_fraction,
         selected_count=args.selected_count,
         g=args.g,
-        rho=args.rho,
+        p=args.p,
     )
     print(summary_json)
     print(summary_txt.read_text(encoding="utf-8").rstrip())

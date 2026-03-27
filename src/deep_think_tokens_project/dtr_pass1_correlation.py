@@ -1,4 +1,4 @@
-"""run 디렉터리의 DTR와 repeat별 정답 여부를 묶어 bin summary를 만든다."""
+"""새 DTR JSON 파일명을 읽는 correlation 드라이버."""
 
 from __future__ import annotations
 
@@ -9,24 +9,16 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean
 
-from src.dtr.jsd_utils import DEFAULT_G
-from src.dtr.jsd_utils import DEFAULT_HIDDEN_STATE_MODE
-from src.dtr.jsd_utils import DEFAULT_RHO
-from src.dtr.jsd_utils import DEFAULT_TOKEN_BLOCK_SIZE
-from src.dtr.jsd_utils import (
-    compute_dtr_from_jsd_matrix,
-    dtr_results_path,
-    jsd_output_dir,
-    latest_matching_file,
-    load_aggregated_results,
-)
+from src.deep_think_tokens_project.io import dtr_results_path
+from src.deep_think_tokens_project.io import jsd_output_dir
+from src.deep_think_tokens_project.io import latest_matching_file
+from src.deep_think_tokens_project.io import load_aggregated_results
+from src.deep_think_tokens_project.utils import DEFAULT_G
+from src.deep_think_tokens_project.utils import DEFAULT_P
+from src.deep_think_tokens_project.utils import compute_dtr_from_divergence_matrix
 from src.plot.dtr_pass1_correlation import plot_to_png
 from tasks.aime24.metrics import TASK_NAME, infer_task_name
-from tasks.aime24.utils import (
-    resolve_model_identity,
-    resolve_reasoning_tags,
-    score_match,
-)
+from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags, score_match
 
 import torch
 
@@ -109,8 +101,6 @@ def summary_filename(
 
 @dataclass(frozen=True)
 class SequenceResult:
-    """Per-repeat 수준에서 DTR와 정답 여부를 합친 결과."""
-
     doc_id: int
     repeat_index: int
     dtr: float
@@ -120,8 +110,6 @@ class SequenceResult:
 
 @dataclass(frozen=True)
 class BinSummary:
-    """DTR 기준 quantile bin 하나의 요약."""
-
     bin_index: int
     count: int
     rank_start: int
@@ -134,13 +122,15 @@ class BinSummary:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot the current project's DTR vs Pass@1 binned correlation."
+        description="Plot the deep-think-tokens DTR vs Pass@1 correlation."
     )
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--dtr-path", type=Path)
     parser.add_argument("--results-path", type=Path)
     parser.add_argument("--samples-path", type=Path)
     parser.add_argument("--prefix-len", type=int)
+    parser.add_argument("--g", type=float, default=DEFAULT_G)
+    parser.add_argument("--p", type=float, default=DEFAULT_P)
     parser.add_argument("--num-bins", type=int, default=5)
     parser.add_argument("--start-token", type=int)
     parser.add_argument("--end-token", type=int)
@@ -148,6 +138,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-json", type=Path)
     parser.add_argument("--title")
     return parser.parse_args()
+
+
+def default_output_dir(run_dir: Path) -> Path:
+    return run_dir / DEFAULT_OUTPUT_DIR_NAME
 
 
 def resolve_output_plot_path(
@@ -159,7 +153,6 @@ def resolve_output_plot_path(
 ) -> Path | None:
     if output_plot is None:
         return None
-
     candidate = output_plot.resolve()
     if candidate.exists() and candidate.is_dir():
         return candidate / plot_filename(
@@ -201,11 +194,6 @@ def validate_token_window(
         )
 
 
-def default_output_dir(run_dir: Path) -> Path:
-    """개별 run의 correlation 산출물을 모으는 기본 디렉터리."""
-    return run_dir / DEFAULT_OUTPUT_DIR_NAME
-
-
 def resolve_paths(
     args: argparse.Namespace,
 ) -> tuple[Path | None, Path, Path, Path | None, Path]:
@@ -218,7 +206,7 @@ def resolve_paths(
         dtr_path = (
             args.dtr_path.resolve()
             if args.dtr_path is not None
-            else dtr_results_path(run_dir)
+            else dtr_results_path(run_dir, g=args.g, p=args.p)
         )
     results_path = (
         args.results_path.resolve()
@@ -277,12 +265,16 @@ def load_prefix_dtr_by_key(
     run_dir: Path,
     *,
     prefix_len: int,
+    g: float,
+    p: float,
 ) -> dict[tuple[int, int], float]:
     return {
         key: row.dtr
         for key, row in load_prefix_dtr_records_by_key(
             run_dir,
             prefix_len=prefix_len,
+            g=g,
+            p=p,
         ).items()
     }
 
@@ -291,14 +283,16 @@ def load_prefix_dtr_records_by_key(
     run_dir: Path,
     *,
     prefix_len: int,
+    g: float,
+    p: float,
 ) -> dict[tuple[int, int], DtrRecord]:
-    from src.experiment.think_n import load_prefix_dtr_rows
+    from src.deep_think_tokens_project.think_n import load_prefix_dtr_rows
 
     prefix_rows = load_prefix_dtr_rows(
         run_dir=run_dir,
         prefix_len=prefix_len,
-        g=DEFAULT_G,
-        rho=DEFAULT_RHO,
+        g=g,
+        p=p,
     )
     return {
         key: DtrRecord(dtr=prefix_dtr, num_tokens=full_num_tokens)
@@ -311,37 +305,31 @@ def load_window_dtr_records_by_key(
     *,
     start_token: int,
     end_token: int | None,
+    g: float,
+    p: float,
 ) -> dict[tuple[int, int], DtrRecord]:
-    matrix_dir = jsd_output_dir(
-        run_dir,
-        hidden_state_mode=DEFAULT_HIDDEN_STATE_MODE,
-        token_block_size=DEFAULT_TOKEN_BLOCK_SIZE,
-    )
+    matrix_dir = jsd_output_dir(run_dir)
     matrix_paths = sorted(matrix_dir.glob("doc*_rep*.pt"))
     if not matrix_paths:
-        raise FileNotFoundError(f"no JSD matrices found under {matrix_dir}")
+        raise FileNotFoundError(f"no divergence caches found under {matrix_dir}")
 
     window_dtr_by_key: dict[tuple[int, int], DtrRecord] = {}
     for matrix_path in matrix_paths:
-        payload = torch.load(matrix_path, map_location="cpu", weights_only=False)
-        jsd_matrix = torch.as_tensor(payload["jsd_matrix"])
-        stop = jsd_matrix.shape[0] if end_token is None else min(
-            end_token, jsd_matrix.shape[0]
+        matrix_payload = torch.load(matrix_path, map_location="cpu", weights_only=False)
+        divergence_matrix = torch.as_tensor(matrix_payload["divergence_matrix"])
+        stop = divergence_matrix.shape[1] if end_token is None else min(
+            end_token, divergence_matrix.shape[1]
         )
         if start_token >= stop:
             raise ValueError(
                 f"token window [{start_token}, {stop}) is empty for {matrix_path}"
             )
-        window_jsd = jsd_matrix[start_token:stop]
-        dtr_result = compute_dtr_from_jsd_matrix(
-            window_jsd,
-            g=DEFAULT_G,
-            rho=DEFAULT_RHO,
-        )
-        key = (int(payload["doc_id"]), int(payload["repeat_index"]))
+        window_matrix = divergence_matrix[:, start_token:stop]
+        dtr_result = compute_dtr_from_divergence_matrix(window_matrix, g=g, p=p)
+        key = (int(matrix_payload["doc_id"]), int(matrix_payload["repeat_index"]))
         window_dtr_by_key[key] = DtrRecord(
             dtr=float(dtr_result.dtr),
-            num_tokens=int(payload["num_tokens"]),
+            num_tokens=int(matrix_payload["num_tokens"]),
         )
     return window_dtr_by_key
 
@@ -371,7 +359,6 @@ def load_sequence_results(
             doc_id = int(sample["doc_id"])
             target = str(sample["target"])
             responses = [str(response) for response in sample["resps"][0]]
-
             for repeat_index, response in enumerate(responses):
                 key = (doc_id, repeat_index)
                 if key not in dtr_by_key:
@@ -403,7 +390,6 @@ def load_sequence_results(
             "DTR entries without matching sample rows: "
             + ", ".join(f"{doc}:{repeat}" for doc, repeat in missing_from_samples[:5])
         )
-
     rows.sort(key=lambda item: item.dtr)
     return rows
 
@@ -419,7 +405,6 @@ def make_bins(rows: list[SequenceResult], num_bins: int) -> list[BinSummary]:
     base_size, remainder = divmod(len(rows), num_bins)
     bins: list[BinSummary] = []
     start = 0
-
     for bin_offset in range(num_bins):
         size = base_size + (1 if bin_offset < remainder else 0)
         chunk = rows[start : start + size]
@@ -436,7 +421,6 @@ def make_bins(rows: list[SequenceResult], num_bins: int) -> list[BinSummary]:
             )
         )
         start += size
-
     return bins
 
 
@@ -541,7 +525,6 @@ def main() -> None:
     args = parse_args()
     run_dir = args.run_dir.resolve()
     dtr_path, results_path, samples_path, output_plot, output_json = resolve_paths(args)
-
     aggregated = (
         load_aggregated_results(run_dir)
         if args.results_path is None
@@ -551,7 +534,6 @@ def main() -> None:
     validate_supported_task(task_name)
     model_name = resolve_model_identity(aggregated, run_dir)
     reasoning_tags = resolve_reasoning_tags(aggregated)
-
     if args.prefix_len is None and args.start_token is None and args.end_token is None:
         assert dtr_path is not None
         dtr_records_by_key = load_dtr_records_by_key(dtr_path)
@@ -559,12 +541,16 @@ def main() -> None:
         dtr_records_by_key = load_prefix_dtr_records_by_key(
             run_dir,
             prefix_len=args.prefix_len,
+            g=args.g,
+            p=args.p,
         )
     else:
         dtr_records_by_key = load_window_dtr_records_by_key(
             run_dir,
             start_token=0 if args.start_token is None else args.start_token,
             end_token=args.end_token,
+            g=args.g,
+            p=args.p,
         )
     dtr_by_key = {key: row.dtr for key, row in dtr_records_by_key.items()}
     num_tokens_by_key = {

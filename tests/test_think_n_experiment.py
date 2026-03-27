@@ -162,11 +162,22 @@ class ThinkNExperimentTest(unittest.TestCase):
             rendered = summary_txt.read_text(encoding="utf-8")
 
             self.assertEqual(payload["summary"]["metrics"]["think_maj@2"], 1.0)
+            self.assertEqual(
+                payload["cost_definition"]["think_tokens"],
+                "sum_selected(min(prefix_len, full_num_tokens) + full_num_tokens)",
+            )
             self.assertEqual(payload["summary"]["metrics"]["mean_avg@4"], 0.5)
             self.assertEqual(payload["summary"]["delta"]["vs_mean_avg"], 0.5)
             self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [0, 1])
             self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["repeat_index"], 0)
             self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["prefix_dtr"], 1.0)
+            self.assertEqual(
+                payload["docs"][0]["selection_stats"]["selected_mean_num_tokens"],
+                4.0,
+            )
+            self.assertTrue(
+                payload["docs"][0]["selection_stats"]["selected_majority_correct"]
+            )
             self.assertIn("think_maj@2: 1.000000", rendered)
             self.assertIn(
                 "mean_full_tokens_per_doc",
@@ -182,8 +193,16 @@ class ThinkNExperimentTest(unittest.TestCase):
             mean_think_tokens_per_doc = payload["summary"]["cost"][
                 "mean_think_tokens_per_doc"
             ]
-            self.assertEqual(mean_full_tokens_per_doc, 16.0)
+            mean_selected_tokens = payload["summary"]["cost"][
+                "mean_selected_tokens_per_selected_repeat"
+            ]
+            mean_full_tokens_per_repeat = payload["summary"]["cost"][
+                "mean_full_tokens_per_repeat"
+            ]
+            self.assertEqual(mean_full_tokens_per_doc, 24.0)
             self.assertEqual(mean_think_tokens_per_doc, 12.0)
+            self.assertEqual(mean_full_tokens_per_repeat, 4.0)
+            self.assertEqual(mean_selected_tokens, 4.0)
             match = re.search(
                 r"^mean_full_tokens_per_doc:\s*([0-9]+(?:\.[0-9]+)?)$",
                 rendered,
@@ -198,6 +217,25 @@ class ThinkNExperimentTest(unittest.TestCase):
             )
             self.assertIsNotNone(match)
             self.assertAlmostEqual(float(match.group(1)), mean_think_tokens_per_doc)
+            match = re.search(
+                r"^mean_full_tokens_per_repeat:\s*([0-9]+(?:\.[0-9]+)?)$",
+                rendered,
+                re.MULTILINE,
+            )
+            self.assertIsNotNone(match)
+            self.assertAlmostEqual(float(match.group(1)), mean_full_tokens_per_repeat)
+            match = re.search(
+                r"^mean_selected_tokens_per_selected_repeat:\s*([0-9]+(?:\.[0-9]+)?)$",
+                rendered,
+                re.MULTILINE,
+            )
+            self.assertIsNotNone(match)
+            self.assertAlmostEqual(float(match.group(1)), mean_selected_tokens)
+            self.assertIn(
+                "cost_formula_think_tokens: "
+                "sum_selected(min(prefix_len, full_num_tokens) + full_num_tokens)",
+                rendered,
+            )
             self.assertTrue(summary_json.is_file())
             self.assertTrue(summary_txt.is_file())
             self.assertEqual(
@@ -250,9 +288,11 @@ class ThinkNExperimentTest(unittest.TestCase):
 
             payload = json.loads(summary_json.read_text(encoding="utf-8"))
             cost = payload["summary"]["cost"]
-            self.assertEqual(cost["total_full_tokens"], 18)
-            self.assertEqual(cost["total_think_tokens"], 16)
-            self.assertEqual(cost["saved_tokens"], 2)
+            self.assertEqual(cost["total_full_tokens"], 33)
+            self.assertEqual(cost["total_think_tokens"], 15)
+            self.assertEqual(cost["mean_full_tokens_per_repeat"], 4.5)
+            self.assertEqual(cost["mean_selected_tokens_per_selected_repeat"], 4.0)
+            self.assertEqual(cost["saved_tokens"], 18)
 
     def test_run_experiment_breaks_dtr_ties_by_repeat_index(self):
         with tempfile.TemporaryDirectory() as tmpdir:

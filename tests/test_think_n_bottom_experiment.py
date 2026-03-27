@@ -175,14 +175,38 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             rendered = summary_txt.read_text(encoding="utf-8")
 
             self.assertEqual(payload["summary"]["metrics"]["bottom_maj@2"], 0.0)
+            self.assertEqual(
+                payload["cost_definition"]["bottom_tokens"],
+                "sum_selected(min(prefix_len, full_num_tokens) + full_num_tokens)",
+            )
             self.assertEqual(payload["summary"]["metrics"]["mean_avg@4"], 0.5)
             self.assertEqual(payload["summary"]["delta"]["vs_mean_avg"], -0.5)
             self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [2, 3])
-            self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["repeat_index"], 2)
-            self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["prefix_dtr"], 0.0)
+            self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["repeat_index"], 0)
+            self.assertEqual(payload["docs"][0]["ranked_repeats"][0]["prefix_dtr"], 1.0)
+            self.assertEqual(
+                payload["docs"][0]["selection_stats"]["selected_mean_num_tokens"],
+                5.0,
+            )
+            self.assertFalse(
+                payload["docs"][0]["selection_stats"]["selected_majority_correct"]
+            )
             self.assertEqual(payload["docs"][0]["metrics"]["selected_word_rep_2"], 0.0)
             self.assertGreater(payload["docs"][0]["metrics"]["full_word_rep_2"], 0.0)
             self.assertIn("bottom_maj@2: 0.000000", rendered)
+            self.assertIn(
+                "mean_full_tokens_per_repeat: 5.000000",
+                rendered,
+            )
+            self.assertIn(
+                "mean_selected_tokens_per_selected_repeat: 5.000000",
+                rendered,
+            )
+            self.assertIn(
+                "cost_formula_bottom_tokens: "
+                "sum_selected(min(prefix_len, full_num_tokens) + full_num_tokens)",
+                rendered,
+            )
             self.assertIn("selected_token_rep_2", rendered)
             self.assertIn("full_word_rep_4", rendered)
             self.assertTrue(summary_json.is_file())
@@ -227,7 +251,7 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             )
 
             payload = json.loads(summary_json.read_text(encoding="utf-8"))
-            self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [0, 1])
+            self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [2, 3])
 
     @patch("transformers.AutoTokenizer.from_pretrained", return_value=FakeTokenizer())
     def test_run_experiment_sets_rep_n_zero_for_short_sequences(self, _tokenizer_mock):
@@ -264,6 +288,13 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             )
 
             payload = json.loads(summary_json.read_text(encoding="utf-8"))
+            self.assertEqual(
+                payload["docs"][0]["selection_stats"]["selected_mean_num_tokens"],
+                1.0,
+            )
+            self.assertFalse(
+                payload["docs"][0]["selection_stats"]["selected_majority_correct"]
+            )
             self.assertEqual(payload["docs"][0]["metrics"]["selected_token_rep_2"], 0.0)
             self.assertEqual(payload["docs"][0]["metrics"]["selected_word_rep_4"], 0.0)
 

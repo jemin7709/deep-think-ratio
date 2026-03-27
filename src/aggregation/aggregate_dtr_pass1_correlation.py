@@ -14,19 +14,85 @@ from src.plot.dtr_pass1_correlation import plot_to_png
 
 DEFAULT_INPUT_ROOT = Path("results")
 DEFAULT_AGGREGATE_DIR_NAME = "dtr_pass1_correlation_aggregated"
-SOURCE_GLOB = "dtr_pass1_correlation_bins*.json"
+SOURCE_GLOB = "dtr_pass1_correlation*.json"
 
 
-def aggregated_json_name(num_bins: int) -> str:
-    return f"aggregated_dtr_pass1_correlation_bins{num_bins}.json"
+def prefix_suffix(prefix_len: int | None) -> str:
+    if prefix_len is None:
+        return ""
+    return f"_prefix{prefix_len}"
 
 
-def plot_summary_json_name(num_bins: int) -> str:
-    return f"plot_dtr_pass1_correlation_bins{num_bins}_summary.json"
+def token_window_suffix(
+    start_token: int | None,
+    end_token: int | None,
+) -> str:
+    if start_token is None and end_token is None:
+        return ""
+    if start_token is None:
+        start_token = 0
+    if end_token is not None:
+        return f"_tokens{start_token}to{end_token - 1}"
+    return f"_tokens{start_token}plus"
 
 
-def plot_filename(num_bins: int) -> str:
-    return f"dtr_pass1_correlation_bins{num_bins}.png"
+def artifact_suffix(
+    prefix_len: int | None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+) -> str:
+    return prefix_suffix(prefix_len) + token_window_suffix(start_token, end_token)
+
+
+def dtr_scope(
+    prefix_len: int | None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+) -> str:
+    if prefix_len is not None:
+        return "prefix"
+    if start_token is None and end_token is None:
+        return "full"
+    return "window"
+
+
+def aggregated_json_name(
+    num_bins: int,
+    prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+) -> str:
+    return (
+        "aggregated_dtr_pass1_correlation"
+        f"{artifact_suffix(prefix_len, start_token, end_token)}"
+        f"_bins{num_bins}.json"
+    )
+
+
+def plot_summary_json_name(
+    num_bins: int,
+    prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+) -> str:
+    return (
+        "plot_dtr_pass1_correlation"
+        f"{artifact_suffix(prefix_len, start_token, end_token)}"
+        f"_bins{num_bins}_summary.json"
+    )
+
+
+def plot_filename(
+    num_bins: int,
+    prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+) -> str:
+    return (
+        "dtr_pass1_correlation"
+        f"{artifact_suffix(prefix_len, start_token, end_token)}"
+        f"_bins{num_bins}.png"
+    )
 
 
 @dataclass(frozen=True)
@@ -37,6 +103,10 @@ class SourceSummary:
     run_dir: Path
     task: str
     model: str
+    dtr_scope: str
+    prefix_len: int | None
+    start_token: int | None
+    end_token: int | None
     num_bins: int
     bins: list[BinSummary]
 
@@ -58,6 +128,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("input_root", nargs="?", type=Path, default=DEFAULT_INPUT_ROOT)
     parser.add_argument("--aggregate-dir-name", default=DEFAULT_AGGREGATE_DIR_NAME)
+    parser.add_argument("--prefix-len", type=int)
+    parser.add_argument("--start-token", type=int)
+    parser.add_argument("--end-token", type=int)
+    parser.add_argument("--num-bins", type=int)
     parser.add_argument("--title")
     return parser.parse_args()
 
@@ -94,15 +168,47 @@ def load_source_summary(summary_path: Path) -> SourceSummary:
         run_dir=Path(payload["run_dir"]),
         task=str(payload["task"]),
         model=str(payload["model"]),
+        dtr_scope=str(payload.get("dtr_scope", "full")),
+        prefix_len=(
+            int(payload["prefix_len"]) if payload.get("prefix_len") is not None else None
+        ),
+        start_token=(
+            int(payload["start_token"])
+            if payload.get("start_token") is not None
+            else None
+        ),
+        end_token=(
+            int(payload["end_token"]) if payload.get("end_token") is not None else None
+        ),
         num_bins=int(payload["num_bins"]),
         bins=bins,
     )
 
 
-def load_source_summaries(summary_paths: list[Path]) -> list[SourceSummary]:
-    summaries = [load_source_summary(path) for path in summary_paths]
+def load_source_summaries(
+    summary_paths: list[Path],
+    *,
+    prefix_len: int | None = None,
+    start_token: int | None = None,
+    end_token: int | None = None,
+    num_bins: int | None = None,
+) -> list[SourceSummary]:
+    requested_scope = dtr_scope(prefix_len, start_token, end_token)
+    summaries = [
+        summary
+        for summary in (load_source_summary(path) for path in summary_paths)
+        if summary.dtr_scope == requested_scope
+        and summary.prefix_len == prefix_len
+        and summary.start_token == start_token
+        and summary.end_token == end_token
+        and (num_bins is None or summary.num_bins == num_bins)
+    ]
     if not summaries:
-        raise ValueError("need at least one source summary")
+        raise FileNotFoundError(
+            "no matching correlation summaries found for "
+            f"prefix_len={prefix_len}, start_token={start_token}, "
+            f"end_token={end_token}, num_bins={num_bins}"
+        )
 
     first = summaries[0]
     expected_indices = [index + 1 for index in range(first.num_bins)]
@@ -112,6 +218,15 @@ def load_source_summaries(summary_paths: list[Path]) -> list[SourceSummary]:
             raise ValueError("all source summaries must share task and model")
         if summary.num_bins != first.num_bins:
             raise ValueError("all source summaries must share num_bins")
+        if (
+            summary.dtr_scope != first.dtr_scope
+            or summary.prefix_len != first.prefix_len
+            or summary.start_token != first.start_token
+            or summary.end_token != first.end_token
+        ):
+            raise ValueError(
+                "all source summaries must share dtr_scope, prefix_len, and token window"
+            )
 
     for summary in summaries:
         actual_indices = [entry.bin_index for entry in summary.bins]
@@ -168,11 +283,16 @@ def write_plot_summary_json(
     aggregated_bins: list[AggregatedBin],
     output_path: Path,
 ) -> None:
+    first = summaries[0]
     payload = {
         "input_root": str(input_root),
         "aggregate_dir": str(aggregate_dir),
-        "task": summaries[0].task,
-        "model": summaries[0].model,
+        "task": first.task,
+        "model": first.model,
+        "dtr_scope": first.dtr_scope,
+        "prefix_len": first.prefix_len,
+        "start_token": first.start_token,
+        "end_token": first.end_token,
         "source_count": len(summaries),
         "num_bins": len(aggregated_bins),
         "pearson_r_binned": pearson_r(
@@ -196,12 +316,22 @@ def write_aggregated_json(
     plot_path: Path,
     plot_summary_path: Path,
 ) -> Path:
-    output_path = aggregate_dir / aggregated_json_name(len(aggregated_bins))
+    first = summaries[0]
+    output_path = aggregate_dir / aggregated_json_name(
+        len(aggregated_bins),
+        first.prefix_len,
+        first.start_token,
+        first.end_token,
+    )
     payload = {
         "input_root": str(input_root),
         "aggregate_dir": str(aggregate_dir),
-        "task": summaries[0].task,
-        "model": summaries[0].model,
+        "task": first.task,
+        "model": first.model,
+        "dtr_scope": first.dtr_scope,
+        "prefix_len": first.prefix_len,
+        "start_token": first.start_token,
+        "end_token": first.end_token,
         "source_count": len(summaries),
         "source_paths": [str(summary.summary_path) for summary in summaries],
         "run_dirs": [str(summary.run_dir) for summary in summaries],
@@ -227,8 +357,15 @@ def build_title(
     if user_title is not None:
         return user_title
     first = summaries[0]
+    dtr_label = "DTR" if first.prefix_len is None else f"Prefix-{first.prefix_len} DTR"
+    if first.start_token is not None or first.end_token is not None:
+        window_start = 0 if first.start_token is None else first.start_token
+        if first.end_token is None:
+            dtr_label = f"{dtr_label} tokens {window_start}+"
+        else:
+            dtr_label = f"{dtr_label} tokens {window_start}-{first.end_token - 1}"
     return (
-        f"{first.task} | {first.model} | Averaged DTR vs Pass@1 ({source_count} runs)"
+        f"{first.task} | {first.model} | Averaged {dtr_label} vs Pass@1 ({source_count} runs)"
     )
 
 
@@ -250,10 +387,26 @@ def main() -> None:
     aggregate_dir = input_root / args.aggregate_dir_name
 
     summary_paths = discover_summary_paths(input_root, args.aggregate_dir_name)
-    summaries = load_source_summaries(summary_paths)
+    summaries = load_source_summaries(
+        summary_paths,
+        prefix_len=args.prefix_len,
+        start_token=args.start_token,
+        end_token=args.end_token,
+        num_bins=args.num_bins,
+    )
     aggregated_bins = aggregate_bins(summaries)
-    plot_path = aggregate_dir / plot_filename(len(aggregated_bins))
-    plot_summary_path = aggregate_dir / plot_summary_json_name(len(aggregated_bins))
+    plot_path = aggregate_dir / plot_filename(
+        len(aggregated_bins),
+        args.prefix_len,
+        args.start_token,
+        args.end_token,
+    )
+    plot_summary_path = aggregate_dir / plot_summary_json_name(
+        len(aggregated_bins),
+        args.prefix_len,
+        args.start_token,
+        args.end_token,
+    )
     plot_bins = build_plot_bins(aggregated_bins)
     binned_pearson = pearson_r(
         [entry.mean_dtr for entry in aggregated_bins],

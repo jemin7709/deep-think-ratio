@@ -3,11 +3,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import torch
+
 from src.aggregation.dtr_pass1_correlation import (
     DEFAULT_OUTPUT_DIR_NAME,
     build_title,
     default_output_dir,
     load_dtr_by_key,
+    load_prefix_dtr_by_key,
+    load_window_dtr_records_by_key,
     load_sequence_results,
     make_bins,
     pearson_r,
@@ -17,6 +21,7 @@ from src.aggregation.dtr_pass1_correlation import (
     write_summary_json,
 )
 from src.dtr.jsd_utils import dtr_results_path
+from src.dtr.jsd_utils import jsd_output_dir
 from tasks.aime24.utils import build_gpt_oss_reasoning_tags
 
 
@@ -149,6 +154,8 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
             )
             self.assertEqual(summary["task"], "aime24_custom")
             self.assertEqual(summary["model"], "openai/gpt-oss-120b")
+            self.assertEqual(summary["dtr_scope"], "full")
+            self.assertIsNone(summary["prefix_len"])
             self.assertEqual(summary["num_sequences"], 4)
             self.assertEqual(summary["num_bins"], 2)
             self.assertAlmostEqual(summary["bins"][0]["mean_dtr"], 0.2)
@@ -177,6 +184,7 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
                     "dtr_path": None,
                     "results_path": None,
                     "samples_path": None,
+                    "prefix_len": None,
                     "num_bins": 7,
                     "output_plot": None,
                     "output_json": None,
@@ -194,6 +202,137 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
                 output_json, default_output_dir(run_dir) / summary_filename(7)
             )
 
+    def test_resolve_paths_uses_prefix_suffix_for_prefix_corr(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            results_path = run_dir / "results_2026-03-22T00-00-00.json"
+            samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
+            results_path.write_text(
+                json.dumps({"results": {"aime24_custom": {}}}), encoding="utf-8"
+            )
+            samples_path.write_text("", encoding="utf-8")
+            args = type(
+                "Args",
+                (),
+                {
+                    "run_dir": run_dir,
+                    "dtr_path": None,
+                    "results_path": None,
+                    "samples_path": None,
+                    "prefix_len": 3,
+                    "num_bins": 7,
+                    "output_plot": None,
+                    "output_json": None,
+                },
+            )()
+
+            dtr_path, _results_path, _samples_path, output_plot, output_json = (
+                resolve_paths(args)
+            )
+
+            self.assertIsNone(dtr_path)
+            self.assertEqual(
+                output_plot,
+                default_output_dir(run_dir) / plot_filename(7, prefix_len=3),
+            )
+            self.assertEqual(
+                output_json,
+                default_output_dir(run_dir) / summary_filename(7, prefix_len=3),
+            )
+
+    def test_resolve_paths_uses_window_suffix(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            results_path = run_dir / "results_2026-03-22T00-00-00.json"
+            samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
+            results_path.write_text(
+                json.dumps({"results": {"aime24_custom": {}}}), encoding="utf-8"
+            )
+            samples_path.write_text("", encoding="utf-8")
+            args = type(
+                "Args",
+                (),
+                {
+                    "run_dir": run_dir,
+                    "dtr_path": None,
+                    "results_path": None,
+                    "samples_path": None,
+                    "prefix_len": None,
+                    "num_bins": 7,
+                    "start_token": 50,
+                    "end_token": None,
+                    "output_plot": None,
+                    "output_json": None,
+                },
+            )()
+
+            _dtr_path, _results_path, _samples_path, output_plot, output_json = (
+                resolve_paths(args)
+            )
+
+            self.assertEqual(
+                output_plot,
+                default_output_dir(run_dir)
+                / plot_filename(7, start_token=50),
+            )
+            self.assertEqual(
+                output_json,
+                default_output_dir(run_dir)
+                / summary_filename(7, start_token=50),
+            )
+
+    def test_load_prefix_dtr_by_key_reads_initial_tokens(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            matrix_dir = jsd_output_dir(run_dir)
+            matrix_dir.mkdir(parents=True)
+            torch.save(
+                {
+                    "doc_id": 0,
+                    "repeat_index": 0,
+                    "num_tokens": 4,
+                    "jsd_matrix": torch.full((4, 3), 0.6),
+                },
+                matrix_dir / "doc0_rep0.pt",
+            )
+            torch.save(
+                {
+                    "doc_id": 0,
+                    "repeat_index": 1,
+                    "num_tokens": 4,
+                    "jsd_matrix": torch.full((4, 3), 0.1),
+                },
+                matrix_dir / "doc0_rep1.pt",
+            )
+
+            dtr_by_key = load_prefix_dtr_by_key(run_dir, prefix_len=2)
+
+            self.assertEqual(dtr_by_key, {(0, 0): 1.0, (0, 1): 0.0})
+
+    def test_resolve_paths_rejects_prefix_len_with_dtr_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+
+            with self.assertRaisesRegex(
+                ValueError, "cannot use --dtr-path together with --prefix-len"
+            ):
+                resolve_paths(
+                    type(
+                        "Args",
+                        (),
+                        {
+                            "run_dir": run_dir,
+                            "dtr_path": run_dir / "dtr.json",
+                            "results_path": None,
+                            "samples_path": None,
+                            "prefix_len": 3,
+                            "num_bins": 5,
+                            "output_plot": None,
+                            "output_json": None,
+                        },
+                    )()
+                )
+
     def test_load_sequence_results_rejects_unmatched_dtr_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             samples_path = Path(tmpdir) / "samples.jsonl"
@@ -208,6 +347,38 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
                     samples_path,
                     reasoning_tags=None,
                 )
+
+    def test_load_window_dtr_records_by_key_reads_suffix_tokens(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            matrix_dir = jsd_output_dir(run_dir)
+            matrix_dir.mkdir(parents=True)
+            torch.save(
+                {
+                    "doc_id": 0,
+                    "repeat_index": 0,
+                    "num_tokens": 4,
+                    "jsd_matrix": torch.tensor(
+                        [
+                            [0.9, 0.9, 0.4],
+                            [0.8, 0.8, 0.4],
+                            [0.1, 0.1, 0.1],
+                            [0.1, 0.1, 0.1],
+                        ],
+                        dtype=torch.float32,
+                    ),
+                },
+                matrix_dir / "doc0_rep0.pt",
+            )
+
+            window_dtr_by_key = load_window_dtr_records_by_key(
+                run_dir,
+                start_token=2,
+                end_token=None,
+            )
+
+            self.assertAlmostEqual(window_dtr_by_key[(0, 0)].dtr, 0.0)
+            self.assertEqual(window_dtr_by_key[(0, 0)].num_tokens, 4)
 
     def _write_samples(self, samples_path: Path) -> Path:
         rows = [
