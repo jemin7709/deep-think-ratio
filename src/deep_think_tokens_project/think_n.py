@@ -245,7 +245,7 @@ def build_doc_result(
     reasoning_tags: list[tuple[str, str]] | None,
     model_name: str,
 ) -> DocResult:
-    from tasks.aime24.utils import score_avg_at_n, score_maj_at_n
+    from tasks.aime24.utils import score_avg_at_n, score_maj_at_n, score_pass_at_k
 
     doc_id = int(row["doc_id"])
     target = str(row["target"])
@@ -283,8 +283,24 @@ def build_doc_result(
         n=selected_count,
         reasoning_tags=reasoning_tags,
     )
+    think_pass = score_pass_at_k(
+        target,
+        selected_completions,
+        n=selected_count,
+        k=1,
+        reasoning_tags=reasoning_tags,
+    )
+    cons_pass = score_pass_at_k(
+        target,
+        completions,
+        n=repeats,
+        k=1,
+        reasoning_tags=reasoning_tags,
+    )
     metrics = {
+        "think_pass@1": think_pass,
         f"think_maj@{selected_count}": think_maj,
+        "cons_pass@1": cons_pass,
         f"cons_maj@{repeats}": score_maj_at_n(
             target,
             completions,
@@ -332,10 +348,12 @@ def summarize_doc_results(
     repeats: int,
     selected_count: int,
 ) -> dict:
+    think_pass_key = "think_pass@1"
     think_key = f"think_maj@{selected_count}"
+    cons_pass_key = "cons_pass@1"
     cons_key = f"cons_maj@{repeats}"
     mean_key = f"mean_avg@{repeats}"
-    metric_keys = [think_key, cons_key, mean_key]
+    metric_keys = [think_pass_key, think_key, cons_pass_key, cons_key, mean_key]
     metric_keys.extend(
         f"{scope}_{level}_rep_{n}"
         for scope in ("selected", "full")
@@ -404,7 +422,9 @@ def render_summary(
     summary: dict,
 ) -> str:
     cost_definition = build_cost_definition()
+    think_pass_key = "think_pass@1"
     think_key = f"think_maj@{selected_count}"
+    cons_pass_key = "cons_pass@1"
     cons_key = f"cons_maj@{repeats}"
     mean_key = f"mean_avg@{repeats}"
     lines = [
@@ -415,7 +435,9 @@ def render_summary(
         f"prefix_len: {prefix_len}",
         f"selected_count: {selected_count}",
         f"p: {p}",
+        f"{think_pass_key}: {summary['metrics'][think_pass_key]:.6f}",
         f"{think_key}: {summary['metrics'][think_key]:.6f}",
+        f"{cons_pass_key}: {summary['metrics'][cons_pass_key]:.6f}",
         f"{cons_key}: {summary['metrics'][cons_key]:.6f}",
         f"{mean_key}: {summary['metrics'][mean_key]:.6f}",
         f"delta_vs_cons_maj: {summary['delta']['vs_cons_maj']:.6f}",

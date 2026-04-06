@@ -35,12 +35,18 @@ def _rep_key_suffix(key: str) -> tuple[int, str]:
 
 
 def _metric_sort_key(key: str) -> tuple[int, int, str]:
-    if key.startswith("think_maj@"):
+    if key.startswith("think_pass@"):
         return (0, 0, key)
-    if key.startswith("bottom_maj@"):
+    if key.startswith("think_maj@"):
         return (0, 1, key)
-    if key.startswith("cons_maj@"):
+    if key.startswith("bottom_pass@"):
+        return (0, 2, key)
+    if key.startswith("bottom_maj@"):
+        return (0, 3, key)
+    if key.startswith("cons_pass@"):
         return (1, 0, key)
+    if key.startswith("cons_maj@"):
+        return (1, 1, key)
     if key.startswith("mean_avg@"):
         return (2, 0, key)
     if key.startswith("selected_token_") and "_rep_" in key:

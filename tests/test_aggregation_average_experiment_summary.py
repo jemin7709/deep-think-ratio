@@ -19,8 +19,9 @@ def write_experiment_summary(
     prefix_len: int = 50,
     g: float = 0.5,
     rho: float = 0.85,
+    think_pass: float = 0.85,
     think_maj: float = 0.8,
-    cons_maj: float = 0.9,
+    cons_pass: float = 0.9,
     mean_avg: float = 0.75,
     total_full_tokens: float = 1000.0,
     total_think_tokens: float = 550.0,
@@ -43,8 +44,9 @@ def write_experiment_summary(
         "rho": rho,
         "summary": {
             "metrics": {
+                "think_pass@1": think_pass,
                 f"think_maj@{selected_count}": think_maj,
-                f"cons_maj@{repeats}": cons_maj,
+                "cons_pass@1": cons_pass,
                 f"mean_avg@{repeats}": mean_avg,
                 "num_docs": 30,
             },
@@ -142,8 +144,9 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 path_a,
                 run_dir="/tmp/run-a",
                 output_dir="/tmp/run-a/experiments/prefix50_top24of48_g0.5_rho0.85",
+                think_pass=0.9,
                 think_maj=0.8,
-                cons_maj=0.9,
+                cons_pass=0.9,
                 mean_avg=0.7,
                 total_full_tokens=900.0,
                 total_think_tokens=450.0,
@@ -158,8 +161,9 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 path_b,
                 run_dir="/tmp/run-b",
                 output_dir="/tmp/run-b/experiments/prefix50_top24of48_g0.5_rho0.85",
+                think_pass=0.7,
                 think_maj=0.6,
-                cons_maj=0.8,
+                cons_pass=0.8,
                 mean_avg=0.5,
                 total_full_tokens=1200.0,
                 total_think_tokens=720.0,
@@ -185,8 +189,9 @@ class AverageExperimentSummaryTest(unittest.TestCase):
 
             self.assertEqual(output["experiment"], "prefix50_top24of48_g0.5_rho0.85")
             self.assertEqual(output["source_count"], 2)
+            self.assertAlmostEqual(output["metrics_mean"]["think_pass@1"], 0.8)
             self.assertAlmostEqual(output["metrics_mean"]["think_maj@24"], 0.7)
-            self.assertAlmostEqual(output["metrics_mean"]["cons_maj@48"], 0.85)
+            self.assertAlmostEqual(output["metrics_mean"]["cons_pass@1"], 0.85)
             self.assertAlmostEqual(output["cost_mean"]["saved_pct"], 0.45)
             self.assertAlmostEqual(
                 output["cost_mean"]["mean_full_tokens_per_repeat"],
@@ -197,6 +202,10 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 21.0,
             )
             self.assertAlmostEqual(output["delta_mean"]["vs_cons_maj"], -0.15)
+            self.assertAlmostEqual(
+                output["metrics_stddev"]["think_pass@1"],
+                0.14142135623730956,
+            )
             self.assertAlmostEqual(
                 output["metrics_stddev"]["think_maj@24"],
                 0.14142135623730956,
@@ -251,7 +260,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
             "g": 0.5,
             "rho": 0.85,
             "summary": {
-                "metrics": {"cons_maj@48": 0.5, "num_docs": 30},
+                "metrics": {"cons_pass@1": 0.5, "num_docs": 30},
                 "cost": {"saved_pct": 0.5},
                 "delta": {"vs_cons_maj": -0.1},
             },
@@ -291,6 +300,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
 
             def make_payload(
                 *,
+                bottom_pass: float,
                 bottom_maj: float,
                 cons_maj: float,
                 mean_avg: float,
@@ -315,8 +325,9 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                     "rho": 0.85,
                     "summary": {
                         "metrics": {
+                            "bottom_pass@1": bottom_pass,
                             "bottom_maj@24": bottom_maj,
-                            "cons_maj@48": cons_maj,
+                            "cons_pass@1": cons_maj,
                             "mean_avg@48": mean_avg,
                             "full_token_rep_4": full_token_rep_4,
                             "full_token_rep_2": full_token_rep_2,
@@ -347,6 +358,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 }
 
             payload_a = make_payload(
+                bottom_pass=0.4,
                 bottom_maj=0.8,
                 cons_maj=0.9,
                 mean_avg=0.7,
@@ -360,6 +372,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
                 selected_word_rep_2=0.45,
             )
             payload_b = make_payload(
+                bottom_pass=0.6,
                 bottom_maj=0.6,
                 cons_maj=0.7,
                 mean_avg=0.65,
@@ -399,6 +412,7 @@ class AverageExperimentSummaryTest(unittest.TestCase):
 
             self.assertEqual(output["experiment"], "prefix50_bottom24of48_g0.5_rho0.85")
             self.assertEqual(output["source_count"], 2)
+            self.assertAlmostEqual(output["metrics_mean"]["bottom_pass@1"], 0.5)
             self.assertAlmostEqual(output["metrics_mean"]["bottom_maj@24"], 0.7)
             self.assertAlmostEqual(output["metrics_mean"]["full_token_rep_4"], 0.3)
             self.assertAlmostEqual(output["metrics_mean"]["selected_token_rep_2"], 0.45)

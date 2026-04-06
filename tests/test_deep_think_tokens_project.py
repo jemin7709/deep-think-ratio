@@ -305,6 +305,7 @@ class ThinkNExperimentTest(unittest.TestCase):
             top_payload = json.loads(top_summary_json.read_text(encoding="utf-8"))
             bottom_payload = json.loads(bottom_summary_json.read_text(encoding="utf-8"))
 
+            self.assertEqual(top_payload["summary"]["metrics"]["think_pass@1"], 1.0)
             self.assertEqual(top_payload["summary"]["metrics"]["think_maj@2"], 1.0)
             self.assertEqual(
                 top_payload["cost_definition"]["think_tokens"],
@@ -331,6 +332,10 @@ class ThinkNExperimentTest(unittest.TestCase):
             self.assertEqual(top_payload["rho"], 0.9)
             self.assertEqual(top_summary_json.parent.name, "prefix2_top2of4_g0.5_p0.9")
 
+            self.assertEqual(
+                bottom_payload["summary"]["metrics"]["bottom_pass@1"],
+                0.0,
+            )
             self.assertEqual(bottom_payload["summary"]["metrics"]["bottom_maj@2"], 0.0)
             self.assertEqual(
                 bottom_payload["cost_definition"]["bottom_tokens"],

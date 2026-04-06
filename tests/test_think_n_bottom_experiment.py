@@ -174,6 +174,7 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             payload = json.loads(summary_json.read_text(encoding="utf-8"))
             rendered = summary_txt.read_text(encoding="utf-8")
 
+            self.assertEqual(payload["summary"]["metrics"]["bottom_pass@1"], 0.0)
             self.assertEqual(payload["summary"]["metrics"]["bottom_maj@2"], 0.0)
             self.assertEqual(
                 payload["cost_definition"]["bottom_tokens"],
@@ -193,6 +194,7 @@ class ThinkNBottomExperimentTest(unittest.TestCase):
             )
             self.assertEqual(payload["docs"][0]["metrics"]["selected_word_rep_2"], 0.0)
             self.assertGreater(payload["docs"][0]["metrics"]["full_word_rep_2"], 0.0)
+            self.assertIn("bottom_pass@1: 0.000000", rendered)
             self.assertIn("bottom_maj@2: 0.000000", rendered)
             self.assertIn(
                 "mean_full_tokens_per_repeat: 5.000000",

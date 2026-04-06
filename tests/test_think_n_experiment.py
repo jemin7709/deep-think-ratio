@@ -161,6 +161,7 @@ class ThinkNExperimentTest(unittest.TestCase):
             payload = json.loads(summary_json.read_text(encoding="utf-8"))
             rendered = summary_txt.read_text(encoding="utf-8")
 
+            self.assertEqual(payload["summary"]["metrics"]["think_pass@1"], 1.0)
             self.assertEqual(payload["summary"]["metrics"]["think_maj@2"], 1.0)
             self.assertEqual(
                 payload["cost_definition"]["think_tokens"],
@@ -178,6 +179,7 @@ class ThinkNExperimentTest(unittest.TestCase):
             self.assertTrue(
                 payload["docs"][0]["selection_stats"]["selected_majority_correct"]
             )
+            self.assertIn("think_pass@1: 1.000000", rendered)
             self.assertIn("think_maj@2: 1.000000", rendered)
             self.assertIn(
                 "mean_full_tokens_per_doc",
