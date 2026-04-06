@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from statistics import fmean
 from typing import Protocol
 
 from PIL import Image
@@ -66,11 +67,50 @@ def _expand_axis_range(
     return expanded_low, expanded_high
 
 
+def _draw_horizontal_dashed_line(
+    draw: ImageDraw.ImageDraw,
+    *,
+    y: int,
+    left: int,
+    right: int,
+    fill: tuple[int, int, int],
+    width: int = 3,
+    dash: int = 14,
+    gap: int = 8,
+) -> None:
+    x = left
+    while x <= right:
+        draw.line([(x, y), (min(x + dash - 1, right), y)], fill=fill, width=width)
+        x += dash + gap
+
+
+def _group_mean_lengths(
+    points: Sequence[ScatterPoint],
+) -> list[tuple[str, float, tuple[int, int, int]]]:
+    correct_lengths = [
+        float(point.response_length)
+        for point in points
+        if getattr(point, "is_correct", None) is True
+    ]
+    incorrect_lengths = [
+        float(point.response_length)
+        for point in points
+        if getattr(point, "is_correct", None) is False
+    ]
+    mean_rows: list[tuple[str, float, tuple[int, int, int]]] = []
+    if correct_lengths:
+        mean_rows.append(("correct mean", fmean(correct_lengths), CORRECT_POINT_FILL))
+    if incorrect_lengths:
+        mean_rows.append(("incorrect mean", fmean(incorrect_lengths), POINT_FILL))
+    return mean_rows
+
+
 def plot_to_png(
     points: Sequence[ScatterPoint],
     pearson: float,
     output_path: Path,
     title: str,
+    y_label: str = "Response Length (tokens)",
 ) -> None:
     if not points:
         raise ValueError("plot_to_png requires at least one point")
@@ -144,6 +184,31 @@ def plot_to_png(
         width=4,
     )
 
+    mean_lines = _group_mean_lengths(points)
+    label_positions: list[int] = []
+    for label, mean_length, color in mean_lines:
+        mean_y = y_to_pixel(mean_length)
+        _draw_horizontal_dashed_line(
+            draw,
+            y=mean_y,
+            left=plot_left,
+            right=plot_right,
+            fill=color,
+        )
+
+        label_w, label_h = measure_text(label, tick_font)
+        label_x = plot_right - label_w - 16
+        label_y = max(plot_top + 8, mean_y - label_h - 6)
+        if label_positions and abs(label_y - label_positions[-1]) < label_h + 6:
+            label_y = min(plot_bottom - label_h - 8, label_positions[-1] + label_h + 6)
+        label_positions.append(label_y)
+        label_box = [
+            (label_x - 8, label_y - 3),
+            (label_x + label_w + 8, label_y + label_h + 3),
+        ]
+        draw.rounded_rectangle(label_box, radius=8, fill=NOTE_FILL)
+        draw.text((label_x, label_y), label, fill=color, font=tick_font)
+
     # 회귀선은 분포 경향만 보조적으로 보여주고, 점의 정오 색상은 직접 읽혀야 한다.
     point_radius = 6
     for point in points:
@@ -188,7 +253,7 @@ def plot_to_png(
 
     draw_rotated_text(
         image,
-        "Response Length (tokens)",
+        y_label,
         (38, (height - 255) // 2),
         label_font,
         TEXT,

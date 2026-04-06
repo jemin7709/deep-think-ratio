@@ -2,17 +2,20 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from src.aggregation.dtr_length_scatter import (
+    DEFAULT_LENGTH_MODE,
     DEFAULT_OUTPUT_DIR_NAME,
-    OUTPUT_JSON_FILENAME,
-    OUTPUT_PLOT_FILENAME,
+    REASONING_LENGTH_MODE,
     SequenceLengthPoint,
     build_title,
     default_output_dir,
+    load_response_lengths_by_key,
     load_correctness_by_key,
     load_points,
     pearson_r,
+    resolve_length_reasoning_tags,
     resolve_model_name,
     resolve_paths,
     resolve_samples_path,
@@ -118,7 +121,7 @@ class PlotDtrLengthScatterTest(unittest.TestCase):
             results_path = run_dir / "results_2026-03-22T00-00-00.json"
             samples_path = run_dir / "samples_aime24_custom_2026-03-22T00-00-00.jsonl"
             dtr_path = dtr_results_path(run_dir)
-            output_path = default_output_dir(run_dir) / OUTPUT_JSON_FILENAME
+            output_path = default_output_dir(run_dir) / "dtr_length_scatter.full.json"
             results_path.write_text(
                 json.dumps(
                     {
@@ -198,6 +201,7 @@ class PlotDtrLengthScatterTest(unittest.TestCase):
                 output_path=output_path,
                 points=points,
                 pearson=pearson,
+                length_mode=DEFAULT_LENGTH_MODE,
             )
 
             summary = json.loads(output_path.read_text(encoding="utf-8"))
@@ -208,6 +212,7 @@ class PlotDtrLengthScatterTest(unittest.TestCase):
             self.assertEqual(summary["task"], "aime24_custom")
             self.assertEqual(summary["model"], "openai/gpt-oss-120b")
             self.assertEqual(summary["samples_path"], str(samples_path))
+            self.assertEqual(summary["length_mode"], DEFAULT_LENGTH_MODE)
             self.assertEqual(summary["num_sequences"], 3)
             self.assertAlmostEqual(summary["pearson_r"], pearson)
             self.assertEqual(summary["dtr_min"], 0.1)
@@ -215,11 +220,86 @@ class PlotDtrLengthScatterTest(unittest.TestCase):
             self.assertEqual(summary["length_min"], 10)
             self.assertEqual(summary["length_max"], 40)
             self.assertAlmostEqual(summary["length_mean"], 70 / 3)
+            self.assertEqual(summary["correct_count"], 2)
+            self.assertEqual(summary["incorrect_count"], 1)
+            self.assertAlmostEqual(summary["correct_length_mean"], 25)
+            self.assertAlmostEqual(summary["incorrect_length_mean"], 20)
             self.assertEqual(len(summary["points"]), 3)
             self.assertEqual(
                 [entry["is_correct"] for entry in summary["points"]],
                 [True, False, True],
             )
+
+    def test_write_summary_json_defaults_empty_accuracy_groups_to_null(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            results_path = run_dir / "results_2026-03-22T00-00-00.json"
+            dtr_path = dtr_results_path(run_dir)
+            output_path = default_output_dir(run_dir) / "dtr_length_scatter.full.json"
+            results_path.write_text(json.dumps({"results": {"aime24_custom": {}}}), encoding="utf-8")
+            dtr_path.parent.mkdir(parents=True, exist_ok=True)
+            dtr_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "doc_id": 0,
+                            "repeat_index": 0,
+                            "dtr": 0.1,
+                            "num_tokens": 10,
+                            "is_correct": None,
+                        },
+                        {
+                            "doc_id": 0,
+                            "repeat_index": 1,
+                            "dtr": 0.3,
+                            "num_tokens": 20,
+                            "is_correct": None,
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            points = [
+                SequenceLengthPoint(
+                    doc_id=0,
+                    repeat_index=0,
+                    dtr=0.1,
+                    response_length=10,
+                    is_correct=None,
+                ),
+                SequenceLengthPoint(
+                    doc_id=0,
+                    repeat_index=1,
+                    dtr=0.3,
+                    response_length=20,
+                    is_correct=None,
+                ),
+            ]
+            pearson = pearson_r(
+                [point.dtr for point in points],
+                [float(point.response_length) for point in points],
+            )
+
+            write_summary_json(
+                run_dir=run_dir,
+                task_name="aime24_custom",
+                model_name="openai/gpt-oss-120b",
+                dtr_path=dtr_path,
+                results_path=results_path,
+                samples_path=None,
+                output_path=output_path,
+                points=points,
+                pearson=pearson,
+                length_mode=DEFAULT_LENGTH_MODE,
+            )
+
+            summary = json.loads(output_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(summary["correct_count"], 0)
+            self.assertEqual(summary["incorrect_count"], 0)
+            self.assertIsNone(summary["correct_length_mean"])
+            self.assertIsNone(summary["incorrect_length_mean"])
 
     def test_resolve_paths_uses_default_output_names(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -240,6 +320,7 @@ class PlotDtrLengthScatterTest(unittest.TestCase):
                     "results_path": None,
                     "output_plot": None,
                     "output_json": None,
+                    "length_mode": DEFAULT_LENGTH_MODE,
                 },
             )()
 
@@ -247,11 +328,84 @@ class PlotDtrLengthScatterTest(unittest.TestCase):
 
             self.assertEqual(dtr_path, dtr_results_path(run_dir))
             self.assertEqual(
-                output_plot, default_output_dir(run_dir) / OUTPUT_PLOT_FILENAME
+                output_plot, default_output_dir(run_dir) / "dtr_length_scatter.full.png"
             )
             self.assertEqual(
-                output_json, default_output_dir(run_dir) / OUTPUT_JSON_FILENAME
+                output_json, default_output_dir(run_dir) / "dtr_length_scatter.full.json"
             )
+
+    @patch("src.aggregation.dtr_length_scatter.AutoTokenizer.from_pretrained")
+    def test_load_response_lengths_by_key_counts_reasoning_until_end_token(
+        self, tokenizer_mock: MagicMock
+    ):
+        class FakeTokenizer:
+            def encode(
+                self, text: str, add_special_tokens: bool = False
+            ) -> list[int]:
+                del add_special_tokens
+                return list(range(len(text)))
+
+        tokenizer_mock.return_value = FakeTokenizer()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            samples_path = Path(tmpdir) / "samples_aime24_custom_2026-03-22.jsonl"
+            samples_path.write_text(
+                json.dumps(
+                    {
+                        "doc_id": 0,
+                        "target": "42",
+                        "resps": [[gpt_oss_completion("abc", "\\boxed{42}")]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            lengths = load_response_lengths_by_key(
+                samples_path,
+                length_mode=REASONING_LENGTH_MODE,
+                model_name="openai/gpt-oss-120b",
+                reasoning_tags=build_gpt_oss_reasoning_tags(),
+            )
+
+            self.assertEqual(lengths, {(0, 0): len("abc<|end|>")})
+
+    def test_load_response_lengths_by_key_rejects_missing_harmony_boundary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            samples_path = Path(tmpdir) / "samples_aime24_custom_2026-03-22.jsonl"
+            samples_path.write_text(
+                json.dumps(
+                    {
+                        "doc_id": 0,
+                        "target": "42",
+                        "resps": [[
+                            "<|start|>assistant<|channel|>analysis<|message|>abc"
+                        ]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "harmony"):
+                load_response_lengths_by_key(
+                    samples_path,
+                    length_mode=REASONING_LENGTH_MODE,
+                    model_name="openai/gpt-oss-120b",
+                    reasoning_tags=build_gpt_oss_reasoning_tags(),
+                )
+
+    def test_resolve_length_reasoning_tags_falls_back_for_gpt_oss(self):
+        aggregated = {
+            "config": {
+                "model_args": {"pretrained": "openai/gpt-oss-120b"},
+            }
+        }
+
+        self.assertEqual(
+            resolve_length_reasoning_tags(aggregated, length_mode=REASONING_LENGTH_MODE),
+            build_gpt_oss_reasoning_tags(),
+        )
 
     def test_resolve_samples_path_matches_results_suffix_before_latest_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
