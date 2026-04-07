@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 
+from src.dtr.jsd_utils import HiddenStateMode
 from src.dtr.jsd_utils import jsd_output_dir
 from src.experiment.think_n import (
     build_output_dir,
@@ -54,8 +55,9 @@ def write_run_fixture(
     sample_rows: list[dict],
     matrices: dict[tuple[int, int], torch.Tensor],
     num_tokens: dict[tuple[int, int], int],
+    hidden_state_mode: HiddenStateMode = "normed_normed",
 ) -> None:
-    run_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "results_2026-03-23T00-00-00.json").write_text(
         json.dumps(make_results_payload(repeats=repeats)),
         encoding="utf-8",
@@ -66,7 +68,7 @@ def write_run_fixture(
     )
     matrix_dir = jsd_output_dir(
         run_dir,
-        hidden_state_mode="normed_normed",
+        hidden_state_mode=hidden_state_mode,
         token_block_size=128,
     )
     matrix_dir.mkdir(parents=True)
@@ -244,6 +246,56 @@ class ThinkNExperimentTest(unittest.TestCase):
                 summary_json.parent.name,
                 "prefix2_top2of4_g0.5_rho0.85",
             )
+
+    def test_run_experiment_can_target_raw_normed_jsd_cache(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = (
+                Path(tmpdir)
+                / "results"
+                / "aime24_custom"
+                / "gpt-oss-120b"
+                / "0"
+                / "20260323T000000Z"
+            )
+            sample_rows = [
+                make_sample_row(
+                    doc_id=0,
+                    target="42",
+                    completions=["42", "42", "0", "0"],
+                )
+            ]
+            num_tokens = {(0, index): 4 for index in range(4)}
+            write_run_fixture(
+                run_dir=run_dir,
+                repeats=4,
+                sample_rows=sample_rows,
+                matrices={(0, index): shallow_jsd(4) for index in range(4)},
+                num_tokens=num_tokens,
+                hidden_state_mode="normed_normed",
+            )
+            write_run_fixture(
+                run_dir=run_dir,
+                repeats=4,
+                sample_rows=sample_rows,
+                matrices={
+                    (0, 0): mixed_prefix_jsd(prefix_tokens=2, total_tokens=4),
+                    (0, 1): deep_jsd(4),
+                    (0, 2): shallow_jsd(4),
+                    (0, 3): shallow_jsd(4),
+                },
+                num_tokens=num_tokens,
+                hidden_state_mode="raw_normed",
+            )
+
+            summary_json, _summary_txt = run_experiment(
+                run_dir=run_dir,
+                prefix_len=2,
+                selected_count=2,
+                hidden_state_mode="raw_normed",
+            )
+
+            payload = json.loads(summary_json.read_text(encoding="utf-8"))
+            self.assertEqual(payload["docs"][0]["selected_repeat_indices"], [0, 1])
 
     def test_run_experiment_cost_counts_short_prefixes_correctly(self):
         with tempfile.TemporaryDirectory() as tmpdir:

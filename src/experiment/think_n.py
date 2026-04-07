@@ -15,6 +15,7 @@ from src.dtr.jsd_utils import DEFAULT_G
 from src.dtr.jsd_utils import DEFAULT_HIDDEN_STATE_MODE
 from src.dtr.jsd_utils import DEFAULT_RHO
 from src.dtr.jsd_utils import DEFAULT_TOKEN_BLOCK_SIZE
+from src.dtr.jsd_utils import HiddenStateMode
 from src.dtr.jsd_utils import compute_dtr_from_jsd_matrix
 from src.dtr.jsd_utils import jsd_output_dir
 from src.dtr.jsd_utils import latest_matching_file
@@ -186,6 +187,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--selected-count", type=int)
     parser.add_argument("--g", type=float, default=DEFAULT_G)
     parser.add_argument("--rho", type=float, default=DEFAULT_RHO)
+    parser.add_argument(
+        "--hidden-state-mode",
+        choices=["raw_raw", "raw_normed", "normed_normed"],
+        default=DEFAULT_HIDDEN_STATE_MODE,
+    )
     return parser.parse_args()
 
 
@@ -204,11 +210,12 @@ def load_prefix_dtr_rows(
     prefix_len: int,
     g: float,
     rho: float,
+    hidden_state_mode: HiddenStateMode = DEFAULT_HIDDEN_STATE_MODE,
 ) -> dict[tuple[int, int], tuple[float, int]]:
     validate_prefix_len(prefix_len)
     matrix_dir = jsd_output_dir(
         run_dir,
-        hidden_state_mode=DEFAULT_HIDDEN_STATE_MODE,
+        hidden_state_mode=hidden_state_mode,
         token_block_size=DEFAULT_TOKEN_BLOCK_SIZE,
     )
     matrix_paths = sorted(matrix_dir.glob("doc*_rep*.pt"))
@@ -511,6 +518,7 @@ def run_experiment(
     selected_count: int | None = None,
     g: float = DEFAULT_G,
     rho: float = DEFAULT_RHO,
+    hidden_state_mode: HiddenStateMode = DEFAULT_HIDDEN_STATE_MODE,
 ) -> tuple[Path, Path]:
     from tasks.aime24.metrics import infer_repeats, infer_task_name
     from tasks.aime24.utils import resolve_model_identity, resolve_reasoning_tags
@@ -532,6 +540,7 @@ def run_experiment(
         prefix_len=prefix_len,
         g=g,
         rho=rho,
+        hidden_state_mode=hidden_state_mode,
     )
 
     doc_results = [
@@ -620,6 +629,7 @@ def main() -> None:
         selected_count=args.selected_count,
         g=args.g,
         rho=args.rho,
+        hidden_state_mode=args.hidden_state_mode,
     )
     print(summary_json)
     print(summary_txt.read_text(encoding="utf-8").rstrip())

@@ -167,6 +167,49 @@ class PlotDtrPass1CorrelationTest(unittest.TestCase):
     def test_pearson_r_returns_zero_for_zero_variance(self):
         self.assertEqual(pearson_r([0.1, 0.2], [1.0, 1.0]), 0.0)
 
+    def test_load_window_dtr_records_can_target_raw_normed_jsd_cache(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            normed_dir = jsd_output_dir(
+                run_dir,
+                hidden_state_mode="normed_normed",
+                token_block_size=128,
+            )
+            rawnorm_dir = jsd_output_dir(
+                run_dir,
+                hidden_state_mode="raw_normed",
+                token_block_size=128,
+            )
+            normed_dir.mkdir(parents=True)
+            rawnorm_dir.mkdir(parents=True)
+            torch.save(
+                {
+                    "doc_id": 0,
+                    "repeat_index": 0,
+                    "num_tokens": 4,
+                    "jsd_matrix": torch.full((4, 3), 0.1),
+                },
+                normed_dir / "doc0_rep0.pt",
+            )
+            torch.save(
+                {
+                    "doc_id": 0,
+                    "repeat_index": 0,
+                    "num_tokens": 4,
+                    "jsd_matrix": torch.full((4, 3), 0.6),
+                },
+                rawnorm_dir / "doc0_rep0.pt",
+            )
+
+            records = load_window_dtr_records_by_key(
+                run_dir,
+                start_token=0,
+                end_token=None,
+                hidden_state_mode="raw_normed",
+            )
+
+            self.assertAlmostEqual(records[(0, 0)].dtr, 1.0)
+
     def test_resolve_paths_uses_bins_in_default_output_names(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = Path(tmpdir)
